@@ -1,0 +1,22 @@
+{
+  "name": "poshere",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "dotenv": "^18.0.9",
+    "jsbarcode": "^3.12.3",
+    "jsqr": "^1.4.0",
+    "lucide": "^1.61.0",
+    "qrcode": "^1.5.4",
+    "vite": "^8.3.5"
+  }
+}
