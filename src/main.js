@@ -241,7 +241,7 @@ function renderSidebar() {
             <span>Laporan Ringkas</span>
           </div>
 
-          <div class="nav-item ${state.currentView === 'printer' ? 'active' : ''}" onclick="window.setView('printer')">
+            <div class="nav-item ${state.currentView === 'printer' ? 'active' : ''}" onclick="window.setView('printer')">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
             <span>Koneksi Printer Struk</span>
             <span style="font-size:0.65rem; background:${printerService.isConnected ? '#ecfdf5' : '#f1f5f9'}; color:${printerService.isConnected ? '#059669' : '#64748b'}; padding:2px 6px; border-radius:99px; margin-left:auto;">
@@ -250,9 +250,9 @@ function renderSidebar() {
           </div>
 
           <div class="nav-item ${state.currentView === 'settings' ? 'active' : ''}" onclick="window.setView('settings')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <span>Koneksi Supabase</span>
-            ${isConfigured ? `<span style="font-size:0.65rem; background:#ecfdf5; color:#059669; padding:2px 6px; border-radius:99px; margin-left:auto;">ON</span>` : `<span style="font-size:0.65rem; background:#fef2f2; color:#ef4444; padding:2px 6px; border-radius:99px; margin-left:auto;">SETUP</span>`}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <span>Database MySQL (XAMPP)</span>
+            <span style="font-size:0.65rem; background:#ecfdf5; color:#059669; padding:2px 6px; border-radius:99px; margin-left:auto;">AKTIF</span>
           </div>
         ` : ''}
       </nav>
@@ -267,9 +267,11 @@ function renderSidebar() {
             </span>
           </div>
           <div class="user-profile-actions">
-            <button class="btn-switch-role" title="Ganti Role Cepat" onclick="window.switchRole()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-            </button>
+            ${state.currentUser?.role === 'owner' ? `
+              <button class="btn-switch-role" title="Ganti Mode / Simulasi Kasir" onclick="window.switchRole()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+              </button>
+            ` : ''}
             <button class="btn-logout-sidebar" title="Logout dari Sistem" onclick="window.handleLogout()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
             </button>
@@ -306,13 +308,13 @@ function renderTopbar() {
       </div>
 
       <div class="topbar-right">
-        <div style="font-size: 0.75rem; display: flex; align-items: center; gap: 0.35rem; background: ${isConfigured ? '#ecfdf5' : '#fffbeb'}; color: ${isConfigured ? '#047857' : '#b45309'}; padding: 0.25rem 0.6rem; border-radius: 99px; border: 1px solid ${isConfigured ? '#a7f3d0' : '#fde68a'};">
-          <span style="width: 7px; height: 7px; border-radius: 50%; background: ${isConfigured ? '#10b981' : '#f59e0b'};"></span>
-          <span>${isConfigured ? 'Supabase Connected' : 'Local Mode'}</span>
+        <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.45rem; background: #f8fafc; color: var(--text-secondary); padding: 0.3rem 0.75rem; border-radius: 99px; border: 1px solid var(--border-light);">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+          <span style="font-weight: 600;">MySQL Online</span>
         </div>
-        <button class="btn btn-secondary" onclick="window.switchRole()" style="font-size: 0.78rem;">
-          Role: <strong style="color:var(--primary-focus); text-transform:uppercase;">${state.currentUser.role}</strong>
-        </button>
+        <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.65rem; background: var(--primary-light); color: var(--primary-focus); border-radius: 99px; font-weight: 700; text-transform: uppercase;">
+          ${state.currentUser.role}
+        </div>
       </div>
     </header>
   `;
@@ -1133,88 +1135,51 @@ function renderReportsView() {
 
 // 7. Settings View (Supabase URL & Key Configuration)
 function renderSettingsView() {
-  const { url, key, isConfigured } = getSupabaseConfig();
-
   return `
-    <div style="max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem;">
+    <div style="max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem;">
       <!-- MySQL Local (XAMPP) Card -->
-      <div class="card" style="border: 2px solid var(--primary-border); background: #ffffff;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <span style="color: var(--primary); display: inline-flex;">${getIcon('building', 20)}</span>
-            <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">Database MySQL Lokal (XAMPP)</h2>
+      <div class="card" style="border: 1px solid var(--border-light); background: #ffffff; padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: #f0fdf4; color: #16a34a; display: flex; align-items: center; justify-content: center;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <div>
+              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin: 0;">Database MySQL Server (XAMPP)</h2>
+              <span style="font-size: 0.78rem; color: var(--text-muted);">Penyimpanan data lokal transaksi, produk, dan kasir</span>
+            </div>
           </div>
-          <span id="mysql-badge-status" class="role-badge badge-kasir" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+          <span id="mysql-badge-status" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; background: #ecfdf5; color: #059669; font-weight: 700; padding: 4px 10px; border-radius: 99px; border: 1px solid #a7f3d0;">
             <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981;"></span>
-            <span>Port 3306 Siap</span>
+            <span>PORT 3306 ONLINE</span>
           </span>
         </div>
-        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1rem;">
-          Database lokal MySQL <code>poshere</code> di XAMPP phpMyAdmin (localhost:3306). Anda dapat langsung memasukkan seluruh data dari LocalStorage browser (Produk, Kategori, User, Metode Bayar) ke database MySQL dengan 1 klik!
-        </p>
 
-        <div style="background: #fafafa; border: 1px solid var(--border-light); border-radius: 8px; padding: 0.85rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.76rem; color: var(--text-secondary);">
-          <div>• Database: <strong>poshere</strong></div>
-          <div>• Host: <strong>127.0.0.1:3306</strong> (User: <code>root</code>)</div>
-          <div>• Total data saat ini di LocalStorage: <strong>${(state.products || []).length} Produk</strong>, <strong>${(state.categories || []).length} Kategori</strong>, <strong>${(state.transactions || []).length} Transaksi</strong></div>
+        <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: 12px; padding: 1rem; margin: 1.25rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; font-size: 0.8rem;">
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Database Name</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">poshere</div>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Host & Port</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">127.0.0.1:3306</div>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Data Tersimpan</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">
+              ${(state.products || []).length} Produk / ${(state.categories || []).length} Kategori
+            </div>
+          </div>
         </div>
 
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary btn-icon-text" onclick="window.syncLocalStorageToMySQL()">
-            ${getIcon('save', 15)} <span>Masukin Data LocalStorage ke MySQL Sekarang</span>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary btn-icon-text" onclick="window.syncLocalStorageToMySQL()" style="padding: 10px 18px;">
+            ${getIcon('save', 16)} <span>Sinkronisasi Data ke MySQL Database</span>
           </button>
-          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromMySQL()">
-            ${getIcon('package', 15)} <span>Tarik Data dari MySQL</span>
+          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromMySQL()" style="padding: 10px 18px;">
+            ${getIcon('package', 16)} <span>Ambil Data Terbaru dari MySQL</span>
           </button>
         </div>
-      </div>
-
-      <div class="card">
-        <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--primary-focus); margin-bottom: 0.25rem;">
-          Pengaturan Koneksi Supabase (Database PostgreSQL Cloud)
-        </h2>
-        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1.25rem;">
-          Opsional: Jika ingin menggunakan cloud database PostgreSQL Supabase multi-cabang.
-        </p>
-
-        <form onsubmit="window.handleSaveSupabaseConfig(event)">
-          <div class="form-group">
-            <label class="form-label">Supabase Project URL *</label>
-            <input type="url" id="cfg-supabase-url" class="form-control" placeholder="https://xyzabcdefghijklm.supabase.co" value="${url || ''}" required/>
-            <small style="font-size: 0.7rem; color: var(--text-muted);">Didapat dari: Supabase Dashboard -> Project Settings -> API -> Project URL</small>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Supabase Anon Key *</label>
-            <textarea id="cfg-supabase-key" class="form-control" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." required>${key || ''}</textarea>
-            <small style="font-size: 0.7rem; color: var(--text-muted);">Didapat dari: Supabase Dashboard -> Project Settings -> API -> Project API keys (anon / public)</small>
-          </div>
-
-          <div style="display: flex; gap: 0.5rem; margin-top: 1.25rem;">
-            <button type="submit" class="btn btn-primary">
-              Simpan & Hubungkan Database
-            </button>
-            <button type="button" class="btn btn-secondary" onclick="window.testSupabaseConnection()">
-              Tes Koneksi
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <div class="card" style="background: #faf5ff; border: 1px dashed var(--primary-border);">
-        <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--primary-focus); margin-bottom: 0.35rem;">
-          Panduan Skema SQL Supabase
-        </h3>
-        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-          File skema tabel SQL sudah dibuat di <a href="file:///c:/xampp/htdocs/POS/supabase_schema.sql" target="_blank" style="color:var(--primary-focus); font-weight:600;">supabase_schema.sql</a>. Cukup copy isi query SQL tersebut dan jalankan di menu <strong>SQL Editor</strong> Supabase untuk langsung membuat tabel:
-        </p>
-        <ul style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 1.25rem; line-height: 1.7;">
-          <li><code>users</code> (Pemilik & Kasir dengan PIN dan role)</li>
-          <li><code>categories</code> (Kategori kopi & makanan)</li>
-          <li><code>products</code> (Master produk, harga jual, harga pokok, stok, image_path)</li>
-          <li><code>payment_methods</code> (Master metode bayar, raw QRIS string & image_path)</li>
-          <li><code>transactions</code> (Riwayat penjualan struk, item belanja, total, kasir ID)</li>
-        </ul>
       </div>
     </div>
   `;
@@ -2797,159 +2762,142 @@ function renderCustomerDisplay() {
   `;
 }
 
-// Auth Gateway Modal Renderer
+// Enterprise POS Station Gateway (Style ESB / Moka / Square POS)
 function renderAuthModal() {
   if (state.auth.isAuthenticated) return '';
 
   return `
-    <div class="auth-overlay">
-      <div class="auth-container">
-        <!-- Left Hero Section -->
-        <div class="auth-left-branding">
-          <div>
-            <div class="auth-brand-badge">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Sistem POS Enterprise
+    <div class="pos-auth-viewport">
+      <div class="pos-auth-card">
+        <!-- Header POS Terminal -->
+        <div class="pos-terminal-header">
+          <div class="pos-terminal-brand">
+            <div class="pos-terminal-logo-box">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="12" x="3" y="4" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/><path d="M7 8h10"/><path d="M7 12h4"/></svg>
             </div>
-            <h1 class="auth-hero-title">
-              POShere <span>Retail & POS</span>
-            </h1>
-            <p class="auth-hero-desc">
-              Platform Point of Sale modern dan terpadu untuk ritel, f&b, dan UMKM. Akses cepat transaksi, sinkronisasi MySQL lokal & cloud database Supabase.
-            </p>
-
-            <div class="auth-features-list">
-              <div class="auth-feature-item">
-                <div class="auth-feature-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                </div>
-                <div>
-                  <strong style="display:block; color:#f8fafc;">Validasi JWT & Session Aman</strong>
-                  <span>Otentikasi berbasis token 24 jam dengan enkripsi ketat.</span>
-                </div>
-              </div>
-
-              <div class="auth-feature-item">
-                <div class="auth-feature-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
-                </div>
-                <div>
-                  <strong style="display:block; color:#f8fafc;">Akses Multi-Role (Owner & Kasir)</strong>
-                  <span>Pembatasan hak akses master produk, laporan, dan pengaturan.</span>
-                </div>
-              </div>
-
-              <div class="auth-feature-item">
-                <div class="auth-feature-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                </div>
-                <div>
-                  <strong style="display:block; color:#f8fafc;">Terkoneksi Database MySQL & Supabase</strong>
-                  <span>Data terpusat, sinkron otomatis dan siap migrasi cloud kapan saja.</span>
-                </div>
-              </div>
+            <div>
+              <div class="pos-terminal-title">POSHERE TERMINAL</div>
+              <div class="pos-terminal-subtitle">POINT OF SALE STATION #01</div>
             </div>
           </div>
-
-          <div class="auth-left-footer">
-            <div class="auth-status-indicator">
-              <span class="auth-status-dot"></span>
-              <span>MySQL Server Aktif (Port 3306)</span>
-            </div>
-            <span>v2.4.0 Production</span>
+          <div class="pos-station-status">
+            <span class="status-pulse-dot"></span>
+            <span>ONLINE (MYSQL :3306)</span>
           </div>
         </div>
 
-        <!-- Right Login Form Section -->
-        <div class="auth-right-form">
-          <div class="auth-form-header">
-            <h2 class="auth-form-title">Masuk ke Sistem</h2>
-            <p class="auth-form-subtitle">Silakan masukkan akun atau gunakan akses cepat kasir/owner</p>
+        <div class="pos-auth-layout">
+          <!-- Left Column: User Selection / Shift Info -->
+          <div class="pos-auth-staff-col">
+            <div class="pos-section-label">PILIH PETUGAS KASIR / OWNER</div>
+            
+            <div class="pos-staff-list">
+              ${(state.users || []).map(u => {
+                const isSelected = state.auth.selectedQuickUser === u.username;
+                const isOwner = u.role === 'owner';
+                return `
+                  <div class="pos-staff-card ${isSelected ? 'active' : ''}" onclick="window.selectStaffTerminal('${u.username}')">
+                    <div class="pos-staff-avatar ${isOwner ? 'owner-bg' : 'kasir-bg'}">
+                      ${u.name.charAt(0)}
+                    </div>
+                    <div class="pos-staff-details">
+                      <div class="pos-staff-name">${u.name}</div>
+                      <div class="pos-staff-role">${u.role.toUpperCase()} • @${u.username}</div>
+                    </div>
+                    <div class="pos-staff-check">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <div class="pos-shift-info-box">
+              <div class="pos-shift-row">
+                <span class="shift-label">TANGGAL TRANSAKSI</span>
+                <span class="shift-value">${new Date().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </div>
+              <div class="pos-shift-row">
+                <span class="shift-label">DATABASE SYNC</span>
+                <span class="shift-value" style="color: #059669; font-weight:700;">MYSQL POSHERE</span>
+              </div>
+              <div class="pos-shift-row">
+                <span class="shift-label">KEAMANAN</span>
+                <span class="shift-value">JWT BEARER 256-BIT</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Quick Account Selector Chips -->
-          <div class="auth-fast-accounts">
-            <div class="auth-fast-title">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              Pilih Akun Cepat (Quick Access):
-            </div>
-            <div class="auth-account-chips">
-              <div class="account-chip" onclick="window.selectQuickLoginUser('owner', '1234')">
-                <div class="account-chip-avatar">O</div>
-                <div class="account-chip-info">
-                  <span class="account-chip-name">Mas Bos (Owner)</span>
-                  <span class="account-chip-role">Role: Owner (PIN: 1234)</span>
-                </div>
-              </div>
-              <div class="account-chip" onclick="window.selectQuickLoginUser('kasir1', '1111')">
-                <div class="account-chip-avatar" style="background:#06b6d4;">K</div>
-                <div class="account-chip-info">
-                  <span class="account-chip-name">Rian (Kasir)</span>
-                  <span class="account-chip-role">Role: Kasir (PIN: 1111)</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Right Column: PIN Pad / Keypad POS -->
+          <div class="pos-auth-keypad-col">
+            <div class="pos-section-label">OTORISASI PIN KASIR (4 DIGIT)</div>
 
-          <!-- Error Alert Banner -->
-          ${state.auth.errorMessage ? `
-            <div class="auth-alert auth-alert-error">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span>${state.auth.errorMessage}</span>
-            </div>
-          ` : ''}
-
-          <!-- Form Login -->
-          <form id="loginForm" onsubmit="window.handleLoginSubmit(event)">
-            <div class="auth-form-group">
-              <label class="auth-form-label">Username Pengguna</label>
-              <div class="auth-input-wrapper">
-                <span class="auth-input-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </span>
-                <input 
-                  type="text" 
-                  id="loginUsername" 
-                  class="auth-input" 
-                  placeholder="Masukkan username (cth: owner / kasir1)" 
-                  value="${state.auth.selectedQuickUser === 'owner' ? 'owner' : 'kasir1'}"
-                  required 
-                  autocomplete="username"
-                />
+            <div class="pos-pin-display-wrapper">
+              <input 
+                type="hidden" 
+                id="loginUsername" 
+                value="${state.auth.selectedQuickUser || 'owner'}"
+              />
+              <input 
+                type="password" 
+                id="loginPin" 
+                class="pos-pin-hidden-input" 
+                maxlength="6"
+                value="${state.auth.enteredPin || ''}"
+                readonly
+              />
+              <div class="pos-pin-dots-display" id="posPinDotsDisplay">
+                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 1 ? 'filled' : '' }"></span>
+                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 2 ? 'filled' : '' }"></span>
+                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 3 ? 'filled' : '' }"></span>
+                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 4 ? 'filled' : '' }"></span>
               </div>
+              <div class="pos-pin-hint">Masukkan 4 Digit Kode Keamanan Petugas</div>
             </div>
 
-            <div class="auth-form-group">
-              <label class="auth-form-label">PIN / Sandi Akses</label>
-              <div class="auth-input-wrapper">
-                <span class="auth-input-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                </span>
-                <input 
-                  type="password" 
-                  id="loginPin" 
-                  class="auth-input" 
-                  placeholder="Masukkan PIN 4 digit (cth: 1234 atau 1111)" 
-                  value="${state.auth.selectedQuickUser === 'owner' ? '1234' : '1111'}"
-                  required 
-                  autocomplete="current-password"
-                />
+            ${state.auth.errorMessage ? `
+              <div class="pos-error-banner">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>${state.auth.errorMessage}</span>
               </div>
+            ` : ''}
+
+            <!-- Hardware-style Numeric Numpad POS Terminal -->
+            <div class="pos-numpad-grid">
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('1')">1</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('2')">2</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('3')">3</button>
+
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('4')">4</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('5')">5</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('6')">6</button>
+
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('7')">7</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('8')">8</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('9')">9</button>
+
+              <button type="button" class="numpad-btn numpad-action-clear" onclick="window.clearPinKey()">C</button>
+              <button type="button" class="numpad-btn" onclick="window.pressPinKey('0')">0</button>
+              <button type="button" class="numpad-btn numpad-action-back" onclick="window.backspacePinKey()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+              </button>
             </div>
 
-            <button type="submit" class="btn-auth-submit" ${state.auth.loading ? 'disabled' : ''}>
+            <!-- Login Action Button -->
+            <button 
+              type="button" 
+              class="pos-btn-login-submit" 
+              onclick="window.executeTerminalLogin()"
+              ${state.auth.loading ? 'disabled' : ''}
+            >
               ${state.auth.loading ? `
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                <span>Memverifikasi Token JWT...</span>
+                <span>MEMVALIDASI KREDENSIAL...</span>
               ` : `
-                <span>Masuk Sekarang</span>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                <span>BUKA SESI KASIR (LOGIN)</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
               `}
             </button>
-          </form>
-
-          <div class="auth-form-footer">
-            Terhubung aman melalui Enkripsi Token JWT & MySQL Server poshere.
           </div>
         </div>
       </div>
@@ -2957,28 +2905,52 @@ function renderAuthModal() {
   `;
 }
 
-// Quick user selection in Login Modal
-window.selectQuickLoginUser = function(username, pin) {
+// POS Terminal Staff Selection
+window.selectStaffTerminal = function(username) {
   state.auth.selectedQuickUser = username;
+  state.auth.enteredPin = '';
   state.auth.errorMessage = '';
-  const usernameInput = document.getElementById('loginUsername');
-  const pinInput = document.getElementById('loginPin');
-  if (usernameInput) usernameInput.value = username;
-  if (pinInput) pinInput.value = pin;
+  renderApp();
 };
 
-// Login Form Submit with JWT Verification
-window.handleLoginSubmit = async function(event) {
-  if (event) event.preventDefault();
+// Numpad Handlers
+window.pressPinKey = function(digit) {
+  if (!state.auth.enteredPin) state.auth.enteredPin = '';
+  if (state.auth.enteredPin.length < 6) {
+    state.auth.enteredPin += digit;
+    state.auth.errorMessage = '';
+    renderApp();
 
-  const usernameInput = document.getElementById('loginUsername');
-  const pinInput = document.getElementById('loginPin');
+    // Auto submit jika sudah 4 digit
+    if (state.auth.enteredPin.length === 4) {
+      setTimeout(() => {
+        window.executeTerminalLogin();
+      }, 150);
+    }
+  }
+};
 
-  const username = usernameInput ? usernameInput.value.trim() : '';
-  const pin = pinInput ? pinInput.value.trim() : '';
+window.clearPinKey = function() {
+  state.auth.enteredPin = '';
+  state.auth.errorMessage = '';
+  renderApp();
+};
 
-  if (!username || !pin) {
-    state.auth.errorMessage = 'Username dan PIN harus diisi!';
+window.backspacePinKey = function() {
+  if (state.auth.enteredPin && state.auth.enteredPin.length > 0) {
+    state.auth.enteredPin = state.auth.enteredPin.slice(0, -1);
+    state.auth.errorMessage = '';
+    renderApp();
+  }
+};
+
+// POS Terminal Execute Login with JWT
+window.executeTerminalLogin = async function() {
+  const username = state.auth.selectedQuickUser || 'owner';
+  const pin = state.auth.enteredPin || '';
+
+  if (!pin || pin.length < 4) {
+    state.auth.errorMessage = 'Masukkan minimal 4 digit PIN petugas!';
     renderApp();
     return;
   }
@@ -2997,24 +2969,25 @@ window.handleLoginSubmit = async function(event) {
     const data = await res.json();
 
     if (res.ok && data.success && data.token) {
-      // Simpan JWT Token di LocalStorage
       localStorage.setItem('poshere_jwt_token', data.token);
       localStorage.setItem('poshere_jwt_user', JSON.stringify(data.user));
 
       state.auth.isAuthenticated = true;
       state.auth.token = data.token;
       state.auth.loading = false;
+      state.auth.enteredPin = '';
       state.auth.errorMessage = '';
       state.currentUser = data.user;
 
       await loadAllData();
       renderApp();
     } else {
-      // Fallback check against local state users jika offline/API gagal
+      // Fallback local check
       const foundUser = (state.users || []).find(u => u.username === username && u.pin === pin);
       if (foundUser) {
         state.auth.isAuthenticated = true;
         state.auth.loading = false;
+        state.auth.enteredPin = '';
         state.auth.errorMessage = '';
         state.currentUser = {
           id: foundUser.id,
@@ -3026,16 +2999,17 @@ window.handleLoginSubmit = async function(event) {
         renderApp();
       } else {
         state.auth.loading = false;
-        state.auth.errorMessage = data.message || 'Username atau PIN salah!';
+        state.auth.enteredPin = '';
+        state.auth.errorMessage = data.message || 'PIN Petugas Salah!';
         renderApp();
       }
     }
   } catch (err) {
-    console.warn('Network login error, trying local user fallback:', err);
     const foundUser = (state.users || []).find(u => u.username === username && u.pin === pin);
     if (foundUser) {
       state.auth.isAuthenticated = true;
       state.auth.loading = false;
+      state.auth.enteredPin = '';
       state.auth.errorMessage = '';
       state.currentUser = {
         id: foundUser.id,
@@ -3047,7 +3021,8 @@ window.handleLoginSubmit = async function(event) {
       renderApp();
     } else {
       state.auth.loading = false;
-      state.auth.errorMessage = 'Gagal menghubungi server otentikasi. Pastikan MySQL & Vite berjalan.';
+      state.auth.enteredPin = '';
+      state.auth.errorMessage = 'Gagal verifikasi terminal: Pastikan MySQL aktif.';
       renderApp();
     }
   }
