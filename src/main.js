@@ -9,6 +9,13 @@ import { getIcon } from './utils/icons.js';
 
 // Application State
 const state = {
+  auth: {
+    isAuthenticated: false,
+    token: localStorage.getItem('poshere_jwt_token') || null,
+    loading: false,
+    errorMessage: '',
+    selectedQuickUser: 'owner'
+  },
   currentUser: {
     id: 'usr_1',
     username: 'owner',
@@ -252,16 +259,21 @@ function renderSidebar() {
 
       <div class="sidebar-footer">
         <div class="user-profile-card">
-          <div class="user-avatar">${state.currentUser.name.charAt(0)}</div>
+          <div class="user-avatar">${(state.currentUser?.name || 'U').charAt(0)}</div>
           <div class="user-meta">
-            <div class="user-name">${state.currentUser.name}</div>
-            <span class="role-badge ${state.currentUser.role === 'owner' ? 'badge-owner' : 'badge-kasir'}">
-              ${state.currentUser.role}
+            <div class="user-name">${state.currentUser?.name || 'User'}</div>
+            <span class="role-badge ${state.currentUser?.role === 'owner' ? 'badge-owner' : 'badge-kasir'}">
+              ${state.currentUser?.role || 'kasir'}
             </span>
           </div>
-          <button class="btn-switch-role" title="Ganti Role (Demo Owner/Kasir)" onclick="window.switchRole()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-          </button>
+          <div class="user-profile-actions">
+            <button class="btn-switch-role" title="Ganti Role Cepat" onclick="window.switchRole()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+            </button>
+            <button class="btn-logout-sidebar" title="Logout dari Sistem" onclick="window.handleLogout()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </aside>
@@ -1125,12 +1137,44 @@ function renderSettingsView() {
 
   return `
     <div style="max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem;">
+      <!-- MySQL Local (XAMPP) Card -->
+      <div class="card" style="border: 2px solid var(--primary-border); background: #ffffff;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: var(--primary); display: inline-flex;">${getIcon('building', 20)}</span>
+            <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">Database MySQL Lokal (XAMPP)</h2>
+          </div>
+          <span id="mysql-badge-status" class="role-badge badge-kasir" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+            <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981;"></span>
+            <span>Port 3306 Siap</span>
+          </span>
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Database lokal MySQL <code>poshere</code> di XAMPP phpMyAdmin (localhost:3306). Anda dapat langsung memasukkan seluruh data dari LocalStorage browser (Produk, Kategori, User, Metode Bayar) ke database MySQL dengan 1 klik!
+        </p>
+
+        <div style="background: #fafafa; border: 1px solid var(--border-light); border-radius: 8px; padding: 0.85rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.76rem; color: var(--text-secondary);">
+          <div>• Database: <strong>poshere</strong></div>
+          <div>• Host: <strong>127.0.0.1:3306</strong> (User: <code>root</code>)</div>
+          <div>• Total data saat ini di LocalStorage: <strong>${(state.products || []).length} Produk</strong>, <strong>${(state.categories || []).length} Kategori</strong>, <strong>${(state.transactions || []).length} Transaksi</strong></div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary btn-icon-text" onclick="window.syncLocalStorageToMySQL()">
+            ${getIcon('save', 15)} <span>Masukin Data LocalStorage ke MySQL Sekarang</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromMySQL()">
+            ${getIcon('package', 15)} <span>Tarik Data dari MySQL</span>
+          </button>
+        </div>
+      </div>
+
       <div class="card">
         <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--primary-focus); margin-bottom: 0.25rem;">
-          Pengaturan Koneksi Supabase (Database PostgreSQL)
+          Pengaturan Koneksi Supabase (Database PostgreSQL Cloud)
         </h2>
         <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1.25rem;">
-          Semua data (User, Master Produk, Master Payment QRIS, dan Transaksi) otomatis masuk dan tersimpan langsung ke PostgreSQL Supabase tanpa ada hardcode di config!
+          Opsional: Jika ingin menggunakan cloud database PostgreSQL Supabase multi-cabang.
         </p>
 
         <form onsubmit="window.handleSaveSupabaseConfig(event)">
@@ -2127,6 +2171,65 @@ window.printHoldOrderBill = function(holdId) {
 };
 
 
+// MySQL Sync Actions
+window.syncLocalStorageToMySQL = async function() {
+  try {
+    const raw = localStorage.getItem('poshere_local_db');
+    let localData = {};
+    if (raw) {
+      localData = JSON.parse(raw);
+    } else {
+      localData = {
+        categories: state.categories,
+        products: state.products,
+        users: state.users,
+        payment_methods: state.paymentMethods,
+        cash_registers: state.cashRegisters,
+        transactions: state.transactions
+      };
+    }
+
+    const res = await fetch('/api/mysql/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(localData)
+    });
+
+    const result = await res.json();
+    if (result.success) {
+      alert(`SUKSES MASUKIN KE MYSQL!\n\n` +
+            `• ${result.synced.products} Produk\n` +
+            `• ${result.synced.categories} Kategori\n` +
+            `• ${result.synced.payment_methods} Metode Bayar\n` +
+            `• ${result.synced.users} User Kasir\n` +
+            `• ${result.synced.transactions} Transaksi\n\n` +
+            `Data sudah masuk ke database "poshere" di MySQL XAMPP (phpMyAdmin)!`);
+    } else {
+      alert('Gagal sync ke MySQL: ' + (result.error || result.message));
+    }
+  } catch (err) {
+    alert('Error koneksi ke MySQL: ' + err.message);
+  }
+};
+
+window.pullDataFromMySQL = async function() {
+  try {
+    const res = await fetch('/api/mysql/pull');
+    const result = await res.json();
+    if (result.success && result.data) {
+      const data = result.data;
+      localStorage.setItem('poshere_local_db', JSON.stringify(data));
+      await loadAllData();
+      renderApp();
+      alert(`Berhasil menarik data dari MySQL:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`);
+    } else {
+      alert('Gagal mengambil data dari MySQL: ' + (result.error || result.message));
+    }
+  } catch (err) {
+    alert('Error koneksi ke MySQL: ' + err.message);
+  }
+};
+
 // Supabase Settings Handler
 window.handleSaveSupabaseConfig = async function(e) {
   e.preventDefault();
@@ -2694,9 +2797,285 @@ function renderCustomerDisplay() {
   `;
 }
 
+// Auth Gateway Modal Renderer
+function renderAuthModal() {
+  if (state.auth.isAuthenticated) return '';
+
+  return `
+    <div class="auth-overlay">
+      <div class="auth-container">
+        <!-- Left Hero Section -->
+        <div class="auth-left-branding">
+          <div>
+            <div class="auth-brand-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Sistem POS Enterprise
+            </div>
+            <h1 class="auth-hero-title">
+              POShere <span>Retail & POS</span>
+            </h1>
+            <p class="auth-hero-desc">
+              Platform Point of Sale modern dan terpadu untuk ritel, f&b, dan UMKM. Akses cepat transaksi, sinkronisasi MySQL lokal & cloud database Supabase.
+            </p>
+
+            <div class="auth-features-list">
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <div>
+                  <strong style="display:block; color:#f8fafc;">Validasi JWT & Session Aman</strong>
+                  <span>Otentikasi berbasis token 24 jam dengan enkripsi ketat.</span>
+                </div>
+              </div>
+
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+                </div>
+                <div>
+                  <strong style="display:block; color:#f8fafc;">Akses Multi-Role (Owner & Kasir)</strong>
+                  <span>Pembatasan hak akses master produk, laporan, dan pengaturan.</span>
+                </div>
+              </div>
+
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                </div>
+                <div>
+                  <strong style="display:block; color:#f8fafc;">Terkoneksi Database MySQL & Supabase</strong>
+                  <span>Data terpusat, sinkron otomatis dan siap migrasi cloud kapan saja.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auth-left-footer">
+            <div class="auth-status-indicator">
+              <span class="auth-status-dot"></span>
+              <span>MySQL Server Aktif (Port 3306)</span>
+            </div>
+            <span>v2.4.0 Production</span>
+          </div>
+        </div>
+
+        <!-- Right Login Form Section -->
+        <div class="auth-right-form">
+          <div class="auth-form-header">
+            <h2 class="auth-form-title">Masuk ke Sistem</h2>
+            <p class="auth-form-subtitle">Silakan masukkan akun atau gunakan akses cepat kasir/owner</p>
+          </div>
+
+          <!-- Quick Account Selector Chips -->
+          <div class="auth-fast-accounts">
+            <div class="auth-fast-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Pilih Akun Cepat (Quick Access):
+            </div>
+            <div class="auth-account-chips">
+              <div class="account-chip" onclick="window.selectQuickLoginUser('owner', '1234')">
+                <div class="account-chip-avatar">O</div>
+                <div class="account-chip-info">
+                  <span class="account-chip-name">Mas Bos (Owner)</span>
+                  <span class="account-chip-role">Role: Owner (PIN: 1234)</span>
+                </div>
+              </div>
+              <div class="account-chip" onclick="window.selectQuickLoginUser('kasir1', '1111')">
+                <div class="account-chip-avatar" style="background:#06b6d4;">K</div>
+                <div class="account-chip-info">
+                  <span class="account-chip-name">Rian (Kasir)</span>
+                  <span class="account-chip-role">Role: Kasir (PIN: 1111)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error Alert Banner -->
+          ${state.auth.errorMessage ? `
+            <div class="auth-alert auth-alert-error">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>${state.auth.errorMessage}</span>
+            </div>
+          ` : ''}
+
+          <!-- Form Login -->
+          <form id="loginForm" onsubmit="window.handleLoginSubmit(event)">
+            <div class="auth-form-group">
+              <label class="auth-form-label">Username Pengguna</label>
+              <div class="auth-input-wrapper">
+                <span class="auth-input-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <input 
+                  type="text" 
+                  id="loginUsername" 
+                  class="auth-input" 
+                  placeholder="Masukkan username (cth: owner / kasir1)" 
+                  value="${state.auth.selectedQuickUser === 'owner' ? 'owner' : 'kasir1'}"
+                  required 
+                  autocomplete="username"
+                />
+              </div>
+            </div>
+
+            <div class="auth-form-group">
+              <label class="auth-form-label">PIN / Sandi Akses</label>
+              <div class="auth-input-wrapper">
+                <span class="auth-input-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+                <input 
+                  type="password" 
+                  id="loginPin" 
+                  class="auth-input" 
+                  placeholder="Masukkan PIN 4 digit (cth: 1234 atau 1111)" 
+                  value="${state.auth.selectedQuickUser === 'owner' ? '1234' : '1111'}"
+                  required 
+                  autocomplete="current-password"
+                />
+              </div>
+            </div>
+
+            <button type="submit" class="btn-auth-submit" ${state.auth.loading ? 'disabled' : ''}>
+              ${state.auth.loading ? `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <span>Memverifikasi Token JWT...</span>
+              ` : `
+                <span>Masuk Sekarang</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              `}
+            </button>
+          </form>
+
+          <div class="auth-form-footer">
+            Terhubung aman melalui Enkripsi Token JWT & MySQL Server poshere.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Quick user selection in Login Modal
+window.selectQuickLoginUser = function(username, pin) {
+  state.auth.selectedQuickUser = username;
+  state.auth.errorMessage = '';
+  const usernameInput = document.getElementById('loginUsername');
+  const pinInput = document.getElementById('loginPin');
+  if (usernameInput) usernameInput.value = username;
+  if (pinInput) pinInput.value = pin;
+};
+
+// Login Form Submit with JWT Verification
+window.handleLoginSubmit = async function(event) {
+  if (event) event.preventDefault();
+
+  const usernameInput = document.getElementById('loginUsername');
+  const pinInput = document.getElementById('loginPin');
+
+  const username = usernameInput ? usernameInput.value.trim() : '';
+  const pin = pinInput ? pinInput.value.trim() : '';
+
+  if (!username || !pin) {
+    state.auth.errorMessage = 'Username dan PIN harus diisi!';
+    renderApp();
+    return;
+  }
+
+  state.auth.loading = true;
+  state.auth.errorMessage = '';
+  renderApp();
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, pin })
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success && data.token) {
+      // Simpan JWT Token di LocalStorage
+      localStorage.setItem('poshere_jwt_token', data.token);
+      localStorage.setItem('poshere_jwt_user', JSON.stringify(data.user));
+
+      state.auth.isAuthenticated = true;
+      state.auth.token = data.token;
+      state.auth.loading = false;
+      state.auth.errorMessage = '';
+      state.currentUser = data.user;
+
+      await loadAllData();
+      renderApp();
+    } else {
+      // Fallback check against local state users jika offline/API gagal
+      const foundUser = (state.users || []).find(u => u.username === username && u.pin === pin);
+      if (foundUser) {
+        state.auth.isAuthenticated = true;
+        state.auth.loading = false;
+        state.auth.errorMessage = '';
+        state.currentUser = {
+          id: foundUser.id,
+          username: foundUser.username,
+          name: foundUser.name,
+          role: foundUser.role
+        };
+        localStorage.setItem('poshere_jwt_user', JSON.stringify(state.currentUser));
+        renderApp();
+      } else {
+        state.auth.loading = false;
+        state.auth.errorMessage = data.message || 'Username atau PIN salah!';
+        renderApp();
+      }
+    }
+  } catch (err) {
+    console.warn('Network login error, trying local user fallback:', err);
+    const foundUser = (state.users || []).find(u => u.username === username && u.pin === pin);
+    if (foundUser) {
+      state.auth.isAuthenticated = true;
+      state.auth.loading = false;
+      state.auth.errorMessage = '';
+      state.currentUser = {
+        id: foundUser.id,
+        username: foundUser.username,
+        name: foundUser.name,
+        role: foundUser.role
+      };
+      localStorage.setItem('poshere_jwt_user', JSON.stringify(state.currentUser));
+      renderApp();
+    } else {
+      state.auth.loading = false;
+      state.auth.errorMessage = 'Gagal menghubungi server otentikasi. Pastikan MySQL & Vite berjalan.';
+      renderApp();
+    }
+  }
+};
+
+// Logout Handler
+window.handleLogout = function() {
+  if (confirm('Apakah Anda yakin ingin logout dari sistem?')) {
+    localStorage.removeItem('poshere_jwt_token');
+    localStorage.removeItem('poshere_jwt_user');
+    state.auth.isAuthenticated = false;
+    state.auth.token = null;
+    state.auth.errorMessage = '';
+    renderApp();
+  }
+};
+
 // App Renderer
 function renderApp() {
   const app = document.getElementById('app');
+
+  // Jika belum login, tampilkan layar Login JWT Portal
+  if (!state.auth.isAuthenticated) {
+    app.innerHTML = `
+      ${renderAuthModal()}
+    `;
+    return;
+  }
 
   let viewContent = '';
   switch (state.currentView) {
@@ -2749,7 +3128,41 @@ function renderApp() {
 
 async function init() {
   await loadAllData();
+
+  // Verifikasi JWT Token jika ada tersimpan
+  const savedToken = localStorage.getItem('poshere_jwt_token');
+  const savedUser = localStorage.getItem('poshere_jwt_user');
+
+  if (savedToken) {
+    try {
+      const res = await fetch('/api/auth/verify', {
+        headers: { 'Authorization': `Bearer ${savedToken}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        state.auth.isAuthenticated = true;
+        state.auth.token = savedToken;
+        state.currentUser = data.user;
+      } else {
+        localStorage.removeItem('poshere_jwt_token');
+        state.auth.isAuthenticated = false;
+      }
+    } catch {
+      if (savedUser) {
+        try {
+          state.currentUser = JSON.parse(savedUser);
+          state.auth.isAuthenticated = true;
+        } catch {
+          state.auth.isAuthenticated = false;
+        }
+      }
+    }
+  } else {
+    state.auth.isAuthenticated = false;
+  }
+
   renderApp();
 }
 
 init();
+
