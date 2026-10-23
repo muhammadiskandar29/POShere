@@ -1356,86 +1356,6 @@ body {
   margin-bottom: 1rem;
 }
 
-/* POS Numeric Keypad Hardware Grid */
-.pos-numpad-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.65rem;
-  margin-bottom: 1.25rem;
-}
-
-.numpad-btn {
-  height: 56px;
-  background: #20293d;
-  border: 1px solid #2d3952;
-  border-radius: 10px;
-  color: #ffffff;
-  font-size: 1.35rem;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 3px 0 #131924;
-  transition: all 0.1s ease;
-  user-select: none;
-}
-
-.numpad-btn:hover {
-  background: #2a3650;
-  border-color: #3e4e70;
-  transform: translateY(-1px);
-}
-
-.numpad-btn:active {
-  transform: translateY(2px);
-  box-shadow: none;
-  background: #171e2e;
-}
-
-.numpad-btn.numpad-action-clear {
-  color: #ef4444;
-  font-weight: 800;
-}
-
-.numpad-btn.numpad-action-back {
-  color: #94a3b8;
-}
-
-.pos-btn-login-submit {
-  width: 100%;
-  height: 50px;
-  background: #2563eb;
-  border: none;
-  border-radius: 10px;
-  color: #ffffff;
-  font-size: 0.88rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
-  transition: all 0.15s ease;
-}
-
-.pos-btn-login-submit:hover {
-  background: #1d4ed8;
-  transform: translateY(-1px);
-}
-
-.pos-btn-login-submit:active {
-  transform: translateY(0);
-}
-
-.pos-btn-login-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
 /* User Card in Sidebar with Logout Action */
 .user-profile-actions {
   display: flex;
@@ -1463,18 +1383,442 @@ body {
   color: var(--danger);
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .pos-auth-layout {
-    grid-template-columns: 1fr;
+/* ==========================================================================
+   CLEAN & PROFESSIONAL EMAIL LOGIN STYLING
+   ========================================================================== */
+.pos-clean-login-card {
+  width: 100%;
+  max-width: 440px;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  padding: 2.25rem 2rem;
+  margin: auto;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-clean-login-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.pos-clean-logo-badge {
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color: #ffffff;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.35);
+}
+
+.pos-clean-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.35rem;
+}
+
+.pos-clean-subtitle {
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.pos-clean-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.pos-clean-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pos-clean-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.01em;
+}
+
+.pos-clean-input-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pos-clean-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.pos-clean-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 1rem 0 2.6rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  color: #0f172a;
+  background: #f8fafc;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.pos-clean-input:focus {
+  border-color: var(--primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.pos-quick-accounts-section {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.pos-quick-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pos-quick-chips {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pos-quick-btn {
+  flex: 1;
+  padding: 0.45rem 0.5rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.3;
+  transition: all 0.15s ease;
+}
+
+.pos-quick-btn:hover {
+  border-color: var(--primary);
+  background: #f5f3ff;
+  color: var(--primary-focus);
+}
+
+.pos-btn-clean-submit {
+  width: 100%;
+  height: 46px;
+  background: linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  transition: all 0.15s ease;
+  margin-top: 0.25rem;
+}
+
+.pos-btn-clean-submit:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.pos-btn-clean-submit:active {
+  transform: translateY(0);
+}
+
+.pos-clean-footer {
+  text-align: center;
+  margin-top: 1.25rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   STRICT MOBILE & IPHONE 13 RESPONSIVE (Viewport 390px x 844px)
+   ========================================================================== */
+@media screen and (max-width: 480px) {
+  :root {
+    --font-base: 9.5px;
   }
-  .pos-auth-staff-col {
-    border-right: none;
-    border-bottom: 1px solid #283347;
-    padding: 1.5rem;
+
+  body {
+    font-size: 9px !important;
   }
-  .pos-auth-keypad-col {
-    padding: 1.5rem;
+
+  /* Compact Topbar */
+  .topbar {
+    height: 42px !important;
+    padding: 0 0.5rem !important;
+  }
+
+  .topbar-left {
+    gap: 0.35rem !important;
+  }
+
+  .page-title {
+    font-size: 0.8rem !important;
+  }
+
+  .mobile-menu-btn {
+    width: 32px !important;
+    height: 32px !important;
+    padding: 4px !important;
+  }
+
+  /* Main App Container */
+  .content-body {
+    padding: 0.4rem !important;
+  }
+
+  .pos-container {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+
+  /* Compact Filter Chips */
+  .catalog-filter-bar {
+    gap: 0.35rem !important;
+    padding-bottom: 0.2rem !important;
+  }
+
+  .cat-chip {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 8px !important;
+    border-radius: 6px !important;
+    height: 26px !important;
+  }
+
+  /* Product Catalog Grid: Strictly 2 columns on iPhone 13, fit cleanly */
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.45rem !important;
+    padding-right: 0 !important;
+  }
+
+  .product-card {
+    padding: 0.4rem !important;
+    border-radius: 8px !important;
+  }
+
+  .product-img-wrap {
+    margin-bottom: 0.35rem !important;
+  }
+
+  .product-name {
+    font-size: 8.5px !important;
+    line-height: 1.15 !important;
+    height: 2.3em !important;
+    margin-bottom: 0.15rem !important;
+  }
+
+  .product-meta-row {
+    padding-top: 0.25rem !important;
+  }
+
+  .product-price {
+    font-size: 9px !important;
+  }
+
+  .stock-tag {
+    font-size: 7.5px !important;
+    padding: 1px 3px !important;
+  }
+
+  /* Cart Panel on Phone: Clean, Never Hidden or Overflown */
+  .cart-panel {
+    border-radius: 10px !important;
+    border: 1px solid var(--border-light) !important;
+    max-height: 380px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important;
+  }
+
+  .cart-header {
+    padding: 0.5rem 0.65rem !important;
+  }
+
+  .cart-header h3 {
+    font-size: 0.82rem !important;
+  }
+
+  .cart-items {
+    padding: 0.4rem 0.5rem !important;
+    gap: 0.4rem !important;
+    max-height: 180px !important;
+  }
+
+  .cart-item-row {
+    padding: 0.4rem !important;
+    gap: 0.4rem !important;
+  }
+
+  .cart-item-name {
+    font-size: 8.5px !important;
+  }
+
+  .cart-item-price {
+    font-size: 8px !important;
+  }
+
+  .qty-btn {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.75rem !important;
+  }
+
+  .qty-val {
+    font-size: 8px !important;
+    min-width: 14px !important;
+  }
+
+  .cart-footer {
+    padding: 0.5rem 0.65rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .summary-row {
+    font-size: 8px !important;
+  }
+
+  .summary-row.total {
+    font-size: 9.5px !important;
+  }
+
+  /* Strict Button Dimensions for Mobile */
+  .btn {
+    padding: 0.35rem 0.5rem !important;
+    font-size: 8.5px !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+  }
+
+  .btn-lg {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 9.5px !important;
+    height: 38px !important;
+  }
+
+  .cart-action-grid {
+    gap: 0.4rem !important;
+  }
+
+  /* Clean Login Screen on Mobile Phone (iPhone 13) */
+  .pos-auth-viewport {
+    padding: 0.75rem !important;
+  }
+
+  .pos-clean-login-card {
+    padding: 1.25rem 1rem !important;
+    border-radius: 14px !important;
+  }
+
+  .pos-clean-logo-badge {
+    width: 42px !important;
+    height: 42px !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .pos-clean-title {
+    font-size: 1.1rem !important;
+  }
+
+  .pos-clean-subtitle {
+    font-size: 0.75rem !important;
+  }
+
+  .pos-clean-form {
+    gap: 0.85rem !important;
+  }
+
+  .pos-clean-input {
+    height: 38px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .pos-clean-label {
+    font-size: 0.72rem !important;
+  }
+
+  .pos-btn-clean-submit {
+    height: 40px !important;
+    font-size: 0.82rem !important;
+  }
+
+  .pos-quick-accounts-section {
+    padding: 0.5rem !important;
+  }
+
+  .pos-quick-chips {
+    flex-direction: column !important;
+    gap: 0.35rem !important;
+  }
+
+  .pos-quick-btn {
+    padding: 0.35rem 0.45rem !important;
+    font-size: 0.68rem !important;
+  }
+
+  /* Tables in Transactions & Master */
+  .table-responsive {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .data-table th, .data-table td {
+    padding: 0.35rem 0.4rem !important;
+    font-size: 8px !important;
+  }
+
+  /* Modals on Mobile */
+  .modal-overlay {
+    padding: 0.5rem !important;
+  }
+
+  .modal-content {
+    max-width: 100% !important;
+    border-radius: 12px !important;
+  }
+
+  .modal-header, .modal-body, .modal-footer {
+    padding: 0.65rem 0.75rem !important;
+  }
+
+  .modal-title {
+    font-size: 0.88rem !important;
   }
 }
+
 

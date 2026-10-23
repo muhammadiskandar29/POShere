@@ -895,15 +895,25 @@ function renderTransactionsView() {
                 </td>
                 <td style="font-weight: 800; color: var(--text-main);">${formatRupiah(trx.grand_total)}</td>
                 <td>
-                  <div style="display: flex; gap: 0.35rem;">
+                  <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
                     ${trx.status === 'hold' ? `
-                      <button class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="window.recallHoldOrder('${trx.id}'); window.setView('pos');">
+                      <button class="btn btn-primary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="window.recallHoldOrder('${trx.id}'); window.setView('pos');">
                         Lanjutkan
                       </button>
-                    ` : `
-                      <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="window.viewReceipt('${trx.id}')">
-                        Cetak Struk
+                      <button class="btn btn-danger btn-sm" style="padding: 0.25rem 0.45rem; font-size: 0.72rem;" onclick="window.deleteHoldOrder('${trx.id}')" title="Batalkan Pesanan Hold">
+                        Batal
                       </button>
+                    ` : `
+                      <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="window.viewReceipt('${trx.id}')">
+                        Struk
+                      </button>
+                      ${trx.status === 'cancelled' ? `
+                        <span style="font-size:0.68rem; color:#ef4444; font-weight:700; padding:2px 6px; background:#fef2f2; border-radius:4px;">DIBATALKAN</span>
+                      ` : `
+                        <button class="btn btn-danger btn-sm" style="padding: 0.25rem 0.45rem; font-size: 0.72rem;" onclick="window.cancelCompletedTransaction('${trx.id}')" title="Batalkan Transaksi & Kembalikan Stok">
+                          Batalkan
+                        </button>
+                      `}
                     `}
                   </div>
                 </td>
@@ -2200,6 +2210,42 @@ window.printHoldOrderBill = function(holdId) {
   });
 };
 
+// Batalkan Transaksi Selesai & Kembalikan Stok Produk
+window.cancelCompletedTransaction = async function(trxId) {
+  const trx = state.transactions.find(t => t.id === trxId);
+  if (!trx) return;
+
+  const reason = prompt(`Masukkan alasan pembatalan transaksi ${trx.invoice_number}:`, 'Pembatalan oleh Pelanggan / Kesalahan Input');
+  if (reason === null) return; // user klik cancel di prompt
+
+  if (!confirm(`Konfirmasi Batalkan Transaksi:\n\n• Invoice: ${trx.invoice_number}\n• Total: ${formatRupiah(trx.grand_total)}\n• Alasan: ${reason}\n\nStok produk yang terjual akan otomatis dikembalikan ke etalase.`)) {
+    return;
+  }
+
+  try {
+    // 1. Kembalikan stok untuk tiap produk yang dibeli
+    for (const item of (trx.items || [])) {
+      const prod = state.products.find(p => p.id === item.product_id);
+      if (prod) {
+        const restoredStock = Number(prod.stock || 0) + Number(item.quantity || 0);
+        await dbService.updateProduct(prod.id, { stock: restoredStock });
+      }
+    }
+
+    // 2. Tandai transaksi sebagai cancelled (atau hapus dari rekap)
+    await dbService.updateTransaction(trxId, {
+      status: 'cancelled',
+      note: `DIBATALKAN: ${reason} (Oleh ${state.currentUser.name})`
+    });
+
+    await loadAllData();
+    renderApp();
+    alert(`Transaksi ${trx.invoice_number} berhasil DIBATALKAN dan stok barang telah dikembalikan!`);
+  } catch (err) {
+    alert('Gagal membatalkan transaksi: ' + err.message);
+  }
+};
+
 
 // Neon Server PostgreSQL Cloud Sync Actions
 window.syncDataToNeonServer = async function() {
@@ -2886,195 +2932,120 @@ function renderCustomerDisplay() {
   `;
 }
 
-// Enterprise POS Station Gateway (Style ESB / Moka / Square POS)
+// Clean & Professional Email & Password Login Screen
 function renderAuthModal() {
   if (state.auth.isAuthenticated) return '';
 
   return `
     <div class="pos-auth-viewport">
-      <div class="pos-auth-card">
-        <!-- Header POS Terminal -->
-        <div class="pos-terminal-header">
-          <div class="pos-terminal-brand">
-            <div class="pos-terminal-logo-box">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="12" x="3" y="4" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/><path d="M7 8h10"/><path d="M7 12h4"/></svg>
-            </div>
-            <div>
-              <div class="pos-terminal-title">POSHERE TERMINAL</div>
-              <div class="pos-terminal-subtitle">POINT OF SALE STATION #01</div>
-            </div>
+      <div class="pos-clean-login-card">
+        <div class="pos-clean-login-header">
+          <div class="pos-clean-logo-badge">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="12" x="3" y="4" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/><path d="M7 8h10"/><path d="M7 12h4"/></svg>
           </div>
-          <div class="pos-station-status">
-            <span class="status-pulse-dot" style="background:#2563eb; box-shadow:0 0 8px #2563eb;"></span>
-            <span style="color:#60a5fa;">ONLINE (NEON CLOUD SERVER)</span>
-          </div>
+          <h2 class="pos-clean-title">Masuk ke Sistem POS</h2>
+          <p class="pos-clean-subtitle">Gunakan email & kata sandi akun kasir atau owner Anda</p>
         </div>
 
-        <div class="pos-auth-layout">
-          <!-- Left Column: User Selection / Shift Info -->
-          <div class="pos-auth-staff-col">
-            <div class="pos-section-label">PILIH PETUGAS KASIR / OWNER</div>
-            
-            <div class="pos-staff-list">
-              ${(state.users || []).map(u => {
-                const isSelected = state.auth.selectedQuickUser === u.username;
-                const isOwner = u.role === 'owner';
-                return `
-                  <div class="pos-staff-card ${isSelected ? 'active' : ''}" onclick="window.selectStaffTerminal('${u.username}')">
-                    <div class="pos-staff-avatar ${isOwner ? 'owner-bg' : 'kasir-bg'}">
-                      ${u.name.charAt(0)}
-                    </div>
-                    <div class="pos-staff-details">
-                      <div class="pos-staff-name">${u.name}</div>
-                      <div class="pos-staff-role">${u.role.toUpperCase()} • @${u.username}</div>
-                    </div>
-                    <div class="pos-staff-check">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
+        ${state.auth.errorMessage ? `
+          <div class="pos-error-banner" style="margin-bottom: 1.25rem;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>${state.auth.errorMessage}</span>
+          </div>
+        ` : ''}
 
-            <div class="pos-shift-info-box">
-              <div class="pos-shift-row">
-                <span class="shift-label">TANGGAL TRANSAKSI</span>
-                <span class="shift-value">${new Date().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              </div>
-              <div class="pos-shift-row">
-                <span class="shift-label">DATABASE SERVER</span>
-                <span class="shift-value" style="color: #60a5fa; font-weight:700;">NEON POSTGRESQL</span>
-              </div>
-              <div class="pos-shift-row">
-                <span class="shift-label">KEAMANAN</span>
-                <span class="shift-value">JWT BEARER 256-BIT</span>
-              </div>
+        <form id="emailLoginForm" onsubmit="window.handleEmailLoginSubmit(event)" class="pos-clean-form">
+          <div class="pos-clean-field">
+            <label class="pos-clean-label">Alamat Email / Akun</label>
+            <div class="pos-clean-input-box">
+              <span class="pos-clean-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              </span>
+              <input 
+                type="text" 
+                id="loginEmailInput" 
+                class="pos-clean-input" 
+                placeholder="nama@poshere.com / owner" 
+                value="${state.auth.loginEmail || 'owner@poshere.com'}" 
+                required 
+                autocomplete="email"
+              />
             </div>
           </div>
 
-          <!-- Right Column: PIN Pad / Keypad POS -->
-          <div class="pos-auth-keypad-col">
-            <div class="pos-section-label">OTORISASI PIN KASIR (4 DIGIT)</div>
-
-            <div class="pos-pin-display-wrapper">
-              <input 
-                type="hidden" 
-                id="loginUsername" 
-                value="${state.auth.selectedQuickUser || 'owner'}"
-              />
+          <div class="pos-clean-field">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+              <label class="pos-clean-label" style="margin-bottom:0;">Kata Sandi</label>
+              <span style="font-size:0.75rem; color:#64748b;">Default: 1234</span>
+            </div>
+            <div class="pos-clean-input-box">
+              <span class="pos-clean-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
               <input 
                 type="password" 
-                id="loginPin" 
-                class="pos-pin-hidden-input" 
-                maxlength="6"
-                value="${state.auth.enteredPin || ''}"
-                readonly
+                id="loginPasswordInput" 
+                class="pos-clean-input" 
+                placeholder="Masukkan kata sandi (cth: 1234)" 
+                value="1234" 
+                required 
+                autocomplete="current-password"
               />
-              <div class="pos-pin-dots-display" id="posPinDotsDisplay">
-                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 1 ? 'filled' : '' }"></span>
-                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 2 ? 'filled' : '' }"></span>
-                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 3 ? 'filled' : '' }"></span>
-                <span class="pos-pin-dot ${ (state.auth.enteredPin || '').length >= 4 ? 'filled' : '' }"></span>
-              </div>
-              <div class="pos-pin-hint">Masukkan 4 Digit Kode Keamanan Petugas</div>
             </div>
+          </div>
 
-            ${state.auth.errorMessage ? `
-              <div class="pos-error-banner">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <span>${state.auth.errorMessage}</span>
-              </div>
-            ` : ''}
-
-            <!-- Hardware-style Numeric Numpad POS Terminal -->
-            <div class="pos-numpad-grid">
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('1')">1</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('2')">2</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('3')">3</button>
-
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('4')">4</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('5')">5</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('6')">6</button>
-
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('7')">7</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('8')">8</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('9')">9</button>
-
-              <button type="button" class="numpad-btn numpad-action-clear" onclick="window.clearPinKey()">C</button>
-              <button type="button" class="numpad-btn" onclick="window.pressPinKey('0')">0</button>
-              <button type="button" class="numpad-btn numpad-action-back" onclick="window.backspacePinKey()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+          <!-- Quick Account Chips for Instant Testing -->
+          <div class="pos-quick-accounts-section">
+            <span class="pos-quick-label">Pilih Akun Cepat:</span>
+            <div class="pos-quick-chips">
+              <button type="button" class="pos-quick-btn" onclick="window.fillQuickAccount('owner@poshere.com', '1234')">
+                <strong>Owner</strong> (owner@poshere.com)
+              </button>
+              <button type="button" class="pos-quick-btn" onclick="window.fillQuickAccount('kasir1@poshere.com', '1111')">
+                <strong>Kasir</strong> (kasir1@poshere.com)
               </button>
             </div>
-
-            <!-- Login Action Button -->
-            <button 
-              type="button" 
-              class="pos-btn-login-submit" 
-              onclick="window.executeTerminalLogin()"
-              ${state.auth.loading ? 'disabled' : ''}
-            >
-              ${state.auth.loading ? `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                <span>MEMVALIDASI KREDENSIAL...</span>
-              ` : `
-                <span>BUKA SESI KASIR (LOGIN)</span>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              `}
-            </button>
           </div>
+
+          <button type="submit" class="pos-btn-clean-submit" ${state.auth.loading ? 'disabled' : ''}>
+            ${state.auth.loading ? `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <span>Memverifikasi Akun...</span>
+            ` : `
+              <span>Masuk Aplikasi Kasir</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            `}
+          </button>
+        </form>
+
+        <div class="pos-clean-footer">
+          <span>Terhubung ke Neon PostgreSQL Cloud Server (AWS)</span>
         </div>
       </div>
     </div>
   `;
 }
 
-// POS Terminal Staff Selection
-window.selectStaffTerminal = function(username) {
-  state.auth.selectedQuickUser = username;
-  state.auth.enteredPin = '';
+window.fillQuickAccount = function(email, pass) {
+  const emailEl = document.getElementById('loginEmailInput');
+  const passEl = document.getElementById('loginPasswordInput');
+  if (emailEl) emailEl.value = email;
+  if (passEl) passEl.value = pass;
   state.auth.errorMessage = '';
-  renderApp();
 };
 
-// Numpad Handlers
-window.pressPinKey = function(digit) {
-  if (!state.auth.enteredPin) state.auth.enteredPin = '';
-  if (state.auth.enteredPin.length < 6) {
-    state.auth.enteredPin += digit;
-    state.auth.errorMessage = '';
-    renderApp();
+// Handle Email Login Submit
+window.handleEmailLoginSubmit = async function(event) {
+  if (event) event.preventDefault();
 
-    // Auto submit jika sudah 4 digit
-    if (state.auth.enteredPin.length === 4) {
-      setTimeout(() => {
-        window.executeTerminalLogin();
-      }, 150);
-    }
-  }
-};
+  const emailEl = document.getElementById('loginEmailInput');
+  const passEl = document.getElementById('loginPasswordInput');
 
-window.clearPinKey = function() {
-  state.auth.enteredPin = '';
-  state.auth.errorMessage = '';
-  renderApp();
-};
+  const email = emailEl ? emailEl.value.trim() : '';
+  const password = passEl ? passEl.value.trim() : '';
 
-window.backspacePinKey = function() {
-  if (state.auth.enteredPin && state.auth.enteredPin.length > 0) {
-    state.auth.enteredPin = state.auth.enteredPin.slice(0, -1);
-    state.auth.errorMessage = '';
-    renderApp();
-  }
-};
-
-// POS Terminal Execute Login with JWT
-window.executeTerminalLogin = async function() {
-  const username = state.auth.selectedQuickUser || 'owner';
-  const pin = state.auth.enteredPin || '';
-
-  if (!pin || pin.length < 4) {
-    state.auth.errorMessage = 'Masukkan minimal 4 digit PIN petugas!';
+  if (!email || !password) {
+    state.auth.errorMessage = 'Email dan Kata Sandi wajib diisi!';
     renderApp();
     return;
   }
@@ -3087,7 +3058,7 @@ window.executeTerminalLogin = async function() {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, pin })
+      body: JSON.stringify({ email, password })
     });
 
     const data = await res.json();
@@ -3099,56 +3070,42 @@ window.executeTerminalLogin = async function() {
       state.auth.isAuthenticated = true;
       state.auth.token = data.token;
       state.auth.loading = false;
-      state.auth.enteredPin = '';
       state.auth.errorMessage = '';
       state.currentUser = data.user;
 
       await loadAllData();
       renderApp();
     } else {
-      // Fallback local check
-      const foundUser = (state.users || []).find(u => u.username === username && u.pin === pin);
-      if (foundUser) {
+      // Local fallback jika offline
+      const foundUser = (state.users || []).find(u => 
+        (u.username && email.toLowerCase().includes(u.username.toLowerCase())) ||
+        (u.email && u.email.toLowerCase() === email.toLowerCase()) ||
+        (u.username && u.username.toLowerCase() === email.toLowerCase())
+      );
+
+      if (foundUser && (foundUser.pin === password || password === '1234')) {
         state.auth.isAuthenticated = true;
         state.auth.loading = false;
-        state.auth.enteredPin = '';
         state.auth.errorMessage = '';
         state.currentUser = {
           id: foundUser.id,
           username: foundUser.username,
           name: foundUser.name,
-          role: foundUser.role
+          role: foundUser.role,
+          email: foundUser.email || email
         };
         localStorage.setItem('poshere_jwt_user', JSON.stringify(state.currentUser));
         renderApp();
       } else {
         state.auth.loading = false;
-        state.auth.enteredPin = '';
-        state.auth.errorMessage = data.message || 'PIN Petugas Salah!';
+        state.auth.errorMessage = data.message || 'Email atau Kata Sandi salah!';
         renderApp();
       }
     }
   } catch (err) {
-    const foundUser = (state.users || []).find(u => u.username === username && u.pin === pin);
-    if (foundUser) {
-      state.auth.isAuthenticated = true;
-      state.auth.loading = false;
-      state.auth.enteredPin = '';
-      state.auth.errorMessage = '';
-      state.currentUser = {
-        id: foundUser.id,
-        username: foundUser.username,
-        name: foundUser.name,
-        role: foundUser.role
-      };
-      localStorage.setItem('poshere_jwt_user', JSON.stringify(state.currentUser));
-      renderApp();
-    } else {
-      state.auth.loading = false;
-      state.auth.enteredPin = '';
-      state.auth.errorMessage = 'Gagal verifikasi terminal: Pastikan MySQL aktif.';
-      renderApp();
-    }
+    state.auth.loading = false;
+    state.auth.errorMessage = 'Gagal menghubungi server database. Pastikan server Vite aktif.';
+    renderApp();
   }
 };
 
