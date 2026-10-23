@@ -3,13 +3,18 @@ import fs from 'fs';
 import path from 'path';
 import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
+import { neon } from '@neondatabase/serverless';
+import 'dotenv/config';
 
 const JWT_SECRET = 'poshere_super_secret_jwt_key_2026_modern_pos_auth';
+const NEON_DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_u9ERC0mWqNpM@ep-lingering-tree-b8tc55nw-pooler.c-14.us-east-1.aws.neon.tech/neondb?sslmode=require';
+const neonSql = neon(NEON_DATABASE_URL);
 
 /**
  * Monolithic Server Plugin for:
  * 1. File Uploads (Base64 to public/uploads)
- * 2. Direct MySQL Local (XAMPP localhost:3306) synchronization & migration
+ * 2. Neon PostgreSQL Cloud Server (Direct Database)
+ * 3. Direct MySQL Local (XAMPP localhost:3306) synchronization & migration
  */
 function monolithicApiPlugin() {
   const uploadsDir = path.resolve(process.cwd(), 'public/uploads');
@@ -209,28 +214,222 @@ function monolithicApiPlugin() {
             });
           }
 
-          // --- JWT AUTH LOGIN ---
+          // ==========================================
+          // NEON POSTGRESQL CLOUD DATABASE ENDPOINTS
+          // ==========================================
+          if (pathname === '/api/neon/status' && method === 'GET') {
+            try {
+              const resTime = await neonSql`SELECT NOW() as current_time, current_database() as db;`;
+              return sendJson(res, 200, {
+                success: true,
+                online: true,
+                database: resTime[0].db,
+                timestamp: resTime[0].current_time
+              });
+            } catch (err) {
+              return sendJson(res, 500, { success: false, online: false, error: err.message });
+            }
+          }
+
+          if (pathname === '/api/neon/pull' && method === 'GET') {
+            try {
+              const categories = await neonSql`SELECT * FROM categories ORDER BY name ASC`;
+              const products = await neonSql`SELECT * FROM products ORDER BY name ASC`;
+              const users = await neonSql`SELECT * FROM users ORDER BY name ASC`;
+              const payment_methods = await neonSql`SELECT * FROM payment_methods ORDER BY name ASC`;
+              const cash_registers = await neonSql`SELECT * FROM cash_registers ORDER BY name ASC`;
+              const transactions = await neonSql`SELECT * FROM transactions ORDER BY created_at DESC`;
+
+              return sendJson(res, 200, {
+                success: true,
+                data: {
+                  categories,
+                  products: products.map(p => ({
+                    ...p,
+                    price: Number(p.price || 0),
+                    cost_price: Number(p.cost_price || 0),
+                    stock: Number(p.stock || 0),
+                    is_active: Boolean(p.is_active)
+                  })),
+                  users,
+                  payment_methods: payment_methods.map(pm => ({
+                    ...pm,
+                    is_active: Boolean(pm.is_active)
+                  })),
+                  cash_registers: cash_registers.map(cr => ({
+                    ...cr,
+                    paper_width: Number(cr.paper_width || 58),
+                    is_active: Boolean(cr.is_active)
+                  })),
+                  transactions: transactions.map(t => ({
+                    ...t,
+                    items: typeof t.items === 'string' ? JSON.parse(t.items || '[]') : (t.items || []),
+                    subtotal: Number(t.subtotal || 0),
+                    grand_total: Number(t.grand_total || 0),
+                    paid_amount: Number(t.paid_amount || 0),
+                    change_amount: Number(t.change_amount || 0)
+                  }))
+                }
+              });
+            } catch (err) {
+              return sendJson(res, 500, { success: false, error: err.message });
+            }
+          }
+
+          if (pathname === '/api/neon/sync' && method === 'POST') {
+            const body = await parseBody(req);
+            const { categories = [], products = [], users = [], payment_methods = [], cash_registers = [], transactions = [] } = body;
+
+            // 1. Categories
+            for (const c of categories) {
+              await neonSql`
+                INSERT INTO categories (id, name, icon)
+                VALUES (${c.id}, ${c.name}, ${c.icon || 'coffee'})
+                ON CONFLICT (id) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  icon = EXCLUDED.icon;
+              `;
+            }
+
+            // 2. Products
+            for (const p of products) {
+              await neonSql`
+                INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active)
+                VALUES (
+                  ${p.id}, ${p.category_id || null}, ${p.name}, 
+                  ${p.price || 0}, ${p.cost_price || 0}, ${p.stock || 0}, 
+                  ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)}
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                  category_id = EXCLUDED.category_id,
+                  name = EXCLUDED.name,
+                  price = EXCLUDED.price,
+                  cost_price = EXCLUDED.cost_price,
+                  stock = EXCLUDED.stock,
+                  sku = EXCLUDED.sku,
+                  image_path = EXCLUDED.image_path,
+                  is_active = EXCLUDED.is_active;
+              `;
+            }
+
+            // 3. Users
+            for (const u of users) {
+              await neonSql`
+                INSERT INTO users (id, username, name, role, pin, status)
+                VALUES (${u.id}, ${u.username}, ${u.name}, ${u.role || 'kasir'}, ${u.pin || '1234'}, ${u.status || 'active'})
+                ON CONFLICT (id) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  role = EXCLUDED.role,
+                  pin = EXCLUDED.pin,
+                  status = EXCLUDED.status;
+              `;
+            }
+
+            // 4. Payment Methods
+            for (const pm of payment_methods) {
+              await neonSql`
+                INSERT INTO payment_methods (id, name, type, account_info, qris_raw_string, image_path, is_active)
+                VALUES (${pm.id}, ${pm.name}, ${pm.type || 'cash'}, ${pm.account_info || ''}, ${pm.qris_raw_string || ''}, ${pm.image_path || ''}, ${Boolean(pm.is_active)})
+                ON CONFLICT (id) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  type = EXCLUDED.type,
+                  account_info = EXCLUDED.account_info,
+                  qris_raw_string = EXCLUDED.qris_raw_string,
+                  image_path = EXCLUDED.image_path,
+                  is_active = EXCLUDED.is_active;
+              `;
+            }
+
+            // 5. Cash Registers
+            for (const cr of cash_registers) {
+              await neonSql`
+                INSERT INTO cash_registers (id, name, device_code, location, printer_type, paper_width, is_active)
+                VALUES (${cr.id}, ${cr.name}, ${cr.device_code}, ${cr.location || ''}, ${cr.printer_type || 'bluetooth'}, ${cr.paper_width || 58}, ${Boolean(cr.is_active)})
+                ON CONFLICT (id) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  device_code = EXCLUDED.device_code,
+                  location = EXCLUDED.location,
+                  printer_type = EXCLUDED.printer_type,
+                  paper_width = EXCLUDED.paper_width,
+                  is_active = EXCLUDED.is_active;
+              `;
+            }
+
+            // 6. Transactions
+            for (const t of transactions) {
+              await neonSql`
+                INSERT INTO transactions (
+                  id, invoice_number, cashier_user_id, cashier_name, table_number, customer_name,
+                  payment_method_id, payment_method_name, payment_status, items,
+                  subtotal, tax_amount, discount_amount, grand_total, paid_amount, change_amount
+                )
+                VALUES (
+                  ${t.id}, ${t.invoice_number}, ${t.cashier_user_id || ''}, ${t.cashier_name || ''}, 
+                  ${t.table_number || ''}, ${t.customer_name || ''}, ${t.payment_method_id || ''}, 
+                  ${t.payment_method_name || ''}, ${t.payment_status || 'paid'}, 
+                  ${JSON.stringify(t.items || [])}::jsonb,
+                  ${t.subtotal || 0}, ${t.tax_amount || 0}, ${t.discount_amount || 0}, 
+                  ${t.grand_total || 0}, ${t.paid_amount || 0}, ${t.change_amount || 0}
+                )
+                ON CONFLICT (id) DO NOTHING;
+              `;
+            }
+
+            return sendJson(res, 200, {
+              success: true,
+              message: 'Data berhasil disinkronisasi ke Neon PostgreSQL Cloud Server!',
+              synced: {
+                categories: categories.length,
+                products: products.length,
+                users: users.length,
+                payment_methods: payment_methods.length,
+                cash_registers: cash_registers.length,
+                transactions: transactions.length
+              }
+            });
+          }
+
+          // --- JWT AUTH LOGIN (Neon PostgreSQL First, MySQL Fallback) ---
           if (pathname === '/api/auth/login' && method === 'POST') {
             const body = await parseBody(req);
             const { username, pin } = body;
 
             if (!username || !pin) {
-              return sendJson(res, 400, { success: false, message: 'Username dan PIN / Password wajib diisi' });
+              return sendJson(res, 400, { success: false, message: 'Username dan PIN wajib diisi' });
             }
 
-            // Cari user di MySQL database poshere
-            const [rows] = await pool.query('SELECT * FROM users WHERE username = ? LIMIT 1', [username.trim()]);
-            if (!rows || rows.length === 0) {
+            let user = null;
+
+            // 1. Cek di Neon PostgreSQL Cloud
+            try {
+              const neonRows = await neonSql`SELECT * FROM users WHERE username = ${username.trim()} LIMIT 1`;
+              if (neonRows && neonRows.length > 0) {
+                user = neonRows[0];
+              }
+            } catch (errNeon) {
+              console.warn('Neon auth query warning:', errNeon.message);
+            }
+
+            // 2. Fallback cek di MySQL Lokal jika belum ketemu
+            if (!user) {
+              try {
+                const [mysqlRows] = await pool.query('SELECT * FROM users WHERE username = ? LIMIT 1', [username.trim()]);
+                if (mysqlRows && mysqlRows.length > 0) {
+                  user = mysqlRows[0];
+                }
+              } catch (errSql) {
+                console.warn('MySQL auth query warning:', errSql.message);
+              }
+            }
+
+            if (!user) {
               return sendJson(res, 401, { success: false, message: 'Akun user tidak ditemukan' });
             }
-
-            const user = rows[0];
 
             if (user.status !== 'active') {
               return sendJson(res, 403, { success: false, message: 'Akun dinonaktifkan oleh administrator' });
             }
 
-            // Validasi PIN
             if (user.pin !== pin.trim()) {
               return sendJson(res, 401, { success: false, message: 'PIN atau Password salah' });
             }
@@ -249,7 +448,7 @@ function monolithicApiPlugin() {
               success: true,
               token,
               user: payload,
-              message: 'Login berhasil! Selamat bertugas.'
+              message: 'Login berhasil! Terhubung dengan Neon Database Server.'
             });
           }
 

@@ -59,9 +59,49 @@ const formatRupiah = (num) => {
   }).format(num || 0);
 };
 
-// Data Loader dari Supabase / dbService
+// Data Loader dari Neon PostgreSQL Server / Local Fallback
 async function loadAllData() {
   try {
+    // 1. Prioritas ambil data langsung dari Neon PostgreSQL Server
+    try {
+      const neonRes = await fetch('/api/neon/pull');
+      if (neonRes.ok) {
+        const neonJson = await neonRes.json();
+        if (neonJson.success && neonJson.data) {
+          const { categories, products, payment_methods, cash_registers, users, transactions } = neonJson.data;
+          state.categories = categories || [];
+          state.products = products || [];
+          state.paymentMethods = payment_methods || [];
+          state.cashRegisters = cash_registers || [];
+          if (state.cashRegisters.length && !state.activeRegister) {
+            state.activeRegister = state.cashRegisters[0];
+          }
+          state.users = users || [];
+          if (state.users.length) {
+            const found = state.users.find(u => u.username === (state.currentUser?.username || 'owner'));
+            if (found) state.currentUser = found;
+            else state.currentUser = state.users[0];
+          }
+          state.transactions = transactions || [];
+
+          // Simpan juga ke local db agar offline tetap sinkron
+          localStorage.setItem('poshere_local_db', JSON.stringify({
+            categories: state.categories,
+            products: state.products,
+            payment_methods: state.paymentMethods,
+            cash_registers: state.cashRegisters,
+            users: state.users,
+            transactions: state.transactions
+          }));
+
+          return;
+        }
+      }
+    } catch (errNeon) {
+      console.warn('Neon cloud pull error, trying local fallback:', errNeon);
+    }
+
+    // 2. Fallback ke dbService (local store) jika offline
     const [cats, prods, pays, regs, users, trx] = await Promise.all([
       dbService.getCategories(),
       dbService.getProducts(),
@@ -80,7 +120,6 @@ async function loadAllData() {
     }
     state.users = users;
     if (state.users && state.users.length) {
-      // pastikan currentUser tersinkron
       const found = state.users.find(u => u.id === state.currentUser.id);
       if (found) state.currentUser = found;
       else state.currentUser = state.users[0];
@@ -251,8 +290,8 @@ function renderSidebar() {
 
           <div class="nav-item ${state.currentView === 'settings' ? 'active' : ''}" onclick="window.setView('settings')">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-            <span>Database MySQL (XAMPP)</span>
-            <span style="font-size:0.65rem; background:#ecfdf5; color:#059669; padding:2px 6px; border-radius:99px; margin-left:auto;">AKTIF</span>
+            <span>Database Server (Neon Cloud)</span>
+            <span style="font-size:0.65rem; background:#eff6ff; color:#2563eb; font-weight:700; padding:2px 6px; border-radius:99px; margin-left:auto;">CLOUD</span>
           </div>
         ` : ''}
       </nav>
@@ -293,10 +332,8 @@ function renderTopbar() {
     users: 'Master User & Kasir',
     reports: 'Laporan Penjualan',
     printer: 'Koneksi Mesin Printer Struk (Thermal ESC/POS)',
-    settings: 'Pengaturan Database Supabase'
+    settings: 'Pengaturan Database Server (Neon & MySQL)'
   };
-
-  const { isConfigured } = getSupabaseConfig();
 
   return `
     <header class="topbar">
@@ -308,9 +345,9 @@ function renderTopbar() {
       </div>
 
       <div class="topbar-right">
-        <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.45rem; background: #f8fafc; color: var(--text-secondary); padding: 0.3rem 0.75rem; border-radius: 99px; border: 1px solid var(--border-light);">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
-          <span style="font-weight: 600;">MySQL Online</span>
+        <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.45rem; background: #eff6ff; color: #1d4ed8; padding: 0.3rem 0.75rem; border-radius: 99px; border: 1px solid #bfdbfe;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 6px #2563eb; display: inline-block;"></span>
+          <span style="font-weight: 700;">Neon Cloud Server</span>
         </div>
         <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.65rem; background: var(--primary-light); color: var(--primary-focus); border-radius: 99px; font-weight: 700; text-transform: uppercase;">
           ${state.currentUser.role}
@@ -1133,10 +1170,55 @@ function renderReportsView() {
   `;
 }
 
-// 7. Settings View (Supabase URL & Key Configuration)
+// 7. Settings View (Database Server & Cloud Synchronization)
 function renderSettingsView() {
   return `
     <div style="max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem;">
+      <!-- Neon PostgreSQL Cloud Server Card -->
+      <div class="card" style="border: 2px solid #3b82f6; background: #ffffff; padding: 1.5rem; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.08);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 42px; height: 42px; border-radius: 10px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <div>
+              <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--text-main); margin: 0;">Neon PostgreSQL Cloud Server</h2>
+              <span style="font-size: 0.78rem; color: var(--text-muted);">Database Server Utama (Production Cloud AWS us-east-1)</span>
+            </div>
+          </div>
+          <span id="neon-badge-status" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; background: #eff6ff; color: #1d4ed8; font-weight: 700; padding: 5px 12px; border-radius: 99px; border: 1px solid #bfdbfe;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 8px #2563eb;"></span>
+            <span>NEON SERVER ONLINE</span>
+          </span>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: 12px; padding: 1.1rem; margin: 1.25rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.8rem;">
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Database Engine</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">PostgreSQL 16 (Neon)</div>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Host Endpoint</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">ep-lingering-tree-b8tc55nw</div>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Data Cloud Aktif</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">
+              ${(state.products || []).length} Produk / ${(state.categories || []).length} Kategori
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary btn-icon-text" onclick="window.syncDataToNeonServer()" style="padding: 10px 18px; background: #2563eb; border-color: #2563eb;">
+            ${getIcon('save', 16)} <span>Push Data ke Neon Cloud Server</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromNeonServer()" style="padding: 10px 18px;">
+            ${getIcon('package', 16)} <span>Pull Data Terbaru dari Neon Server</span>
+          </button>
+        </div>
+      </div>
+
       <!-- MySQL Local (XAMPP) Card -->
       <div class="card" style="border: 1px solid var(--border-light); background: #ffffff; padding: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
@@ -1145,39 +1227,22 @@ function renderSettingsView() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
             </div>
             <div>
-              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin: 0;">Database MySQL Server (XAMPP)</h2>
-              <span style="font-size: 0.78rem; color: var(--text-muted);">Penyimpanan data lokal transaksi, produk, dan kasir</span>
+              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin: 0;">Database MySQL Server (XAMPP Backup)</h2>
+              <span style="font-size: 0.78rem; color: var(--text-muted);">Penyimpanan lokal cadangan offline (localhost:3306)</span>
             </div>
           </div>
           <span id="mysql-badge-status" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; background: #ecfdf5; color: #059669; font-weight: 700; padding: 4px 10px; border-radius: 99px; border: 1px solid #a7f3d0;">
             <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981;"></span>
-            <span>PORT 3306 ONLINE</span>
+            <span>PORT 3306 BACKUP</span>
           </span>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: 12px; padding: 1rem; margin: 1.25rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; font-size: 0.8rem;">
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Database Name</div>
-            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">poshere</div>
-          </div>
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Host & Port</div>
-            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">127.0.0.1:3306</div>
-          </div>
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Data Tersimpan</div>
-            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">
-              ${(state.products || []).length} Produk / ${(state.categories || []).length} Kategori
-            </div>
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary btn-icon-text" onclick="window.syncLocalStorageToMySQL()" style="padding: 10px 18px;">
-            ${getIcon('save', 16)} <span>Sinkronisasi Data ke MySQL Database</span>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;">
+          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.syncLocalStorageToMySQL()" style="padding: 9px 16px;">
+            ${getIcon('save', 15)} <span>Backup ke MySQL Lokal</span>
           </button>
-          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromMySQL()" style="padding: 10px 18px;">
-            ${getIcon('package', 16)} <span>Ambil Data Terbaru dari MySQL</span>
+          <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromMySQL()" style="padding: 9px 16px;">
+            ${getIcon('package', 15)} <span>Ambil dari MySQL Lokal</span>
           </button>
         </div>
       </div>
@@ -2136,6 +2201,65 @@ window.printHoldOrderBill = function(holdId) {
 };
 
 
+// Neon Server PostgreSQL Cloud Sync Actions
+window.syncDataToNeonServer = async function() {
+  try {
+    const raw = localStorage.getItem('poshere_local_db');
+    let localData = {};
+    if (raw) {
+      localData = JSON.parse(raw);
+    } else {
+      localData = {
+        categories: state.categories,
+        products: state.products,
+        users: state.users,
+        payment_methods: state.paymentMethods,
+        cash_registers: state.cashRegisters,
+        transactions: state.transactions
+      };
+    }
+
+    const res = await fetch('/api/neon/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(localData)
+    });
+
+    const result = await res.json();
+    if (result.success) {
+      alert(`SUKSES SINKRONISASI KE NEON POSTGRESQL CLOUD!\n\n` +
+            `• ${result.synced.products} Produk\n` +
+            `• ${result.synced.categories} Kategori\n` +
+            `• ${result.synced.payment_methods} Metode Bayar\n` +
+            `• ${result.synced.users} User Kasir\n` +
+            `• ${result.synced.transactions} Transaksi\n\n` +
+            `Data telah tersimpan di Neon Cloud PostgreSQL Server!`);
+    } else {
+      alert('Gagal sync ke Neon Server: ' + (result.error || result.message));
+    }
+  } catch (err) {
+    alert('Error koneksi ke Neon Server: ' + err.message);
+  }
+};
+
+window.pullDataFromNeonServer = async function() {
+  try {
+    const res = await fetch('/api/neon/pull');
+    const result = await res.json();
+    if (result.success && result.data) {
+      const data = result.data;
+      localStorage.setItem('poshere_local_db', JSON.stringify(data));
+      await loadAllData();
+      renderApp();
+      alert(`Berhasil menarik data dari Neon PostgreSQL Cloud Server:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`);
+    } else {
+      alert('Gagal mengambil data dari Neon Server: ' + (result.error || result.message));
+    }
+  } catch (err) {
+    alert('Error koneksi ke Neon Server: ' + err.message);
+  }
+};
+
 // MySQL Sync Actions
 window.syncLocalStorageToMySQL = async function() {
   try {
@@ -2781,8 +2905,8 @@ function renderAuthModal() {
             </div>
           </div>
           <div class="pos-station-status">
-            <span class="status-pulse-dot"></span>
-            <span>ONLINE (MYSQL :3306)</span>
+            <span class="status-pulse-dot" style="background:#2563eb; box-shadow:0 0 8px #2563eb;"></span>
+            <span style="color:#60a5fa;">ONLINE (NEON CLOUD SERVER)</span>
           </div>
         </div>
 
@@ -2818,8 +2942,8 @@ function renderAuthModal() {
                 <span class="shift-value">${new Date().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
               </div>
               <div class="pos-shift-row">
-                <span class="shift-label">DATABASE SYNC</span>
-                <span class="shift-value" style="color: #059669; font-weight:700;">MYSQL POSHERE</span>
+                <span class="shift-label">DATABASE SERVER</span>
+                <span class="shift-value" style="color: #60a5fa; font-weight:700;">NEON POSTGRESQL</span>
               </div>
               <div class="pos-shift-row">
                 <span class="shift-label">KEAMANAN</span>
