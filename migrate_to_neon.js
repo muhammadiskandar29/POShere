@@ -20,8 +20,10 @@ async function runMigration() {
         id VARCHAR(50) PRIMARY KEY,
         username VARCHAR(50) UNIQUE NOT NULL,
         name VARCHAR(100) NOT NULL,
+        email VARCHAR(100),
         role VARCHAR(20) NOT NULL DEFAULT 'kasir',
         pin VARCHAR(10) DEFAULT '1234',
+        password VARCHAR(100) DEFAULT '1234',
         status VARCHAR(20) DEFAULT 'active',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
