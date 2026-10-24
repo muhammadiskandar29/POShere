@@ -180,6 +180,7 @@ export default async function handler(req, res) {
             ${u.password || u.pin || '1234'}, ${u.tenant_id || (u.role === 'super_admin' ? null : activeTenantId)}
           )
           ON CONFLICT (id) DO UPDATE SET
+            username = EXCLUDED.username,
             name = EXCLUDED.name,
             role = EXCLUDED.role,
             pin = EXCLUDED.pin,

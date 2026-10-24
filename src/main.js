@@ -113,13 +113,41 @@ async function deleteFromNeonServer(entity, id) {
       body: JSON.stringify({ entity, id })
     });
     const result = await res.json().catch(() => ({}));
-    return result.success;
+    if (!res.ok || !result.success) {
+      console.warn(`deleteFromNeonServer error for ${entity} ${id}:`, result);
+      return false;
+    }
+    return true;
   } catch (err) {
     console.warn(`Failed to call /api/neon/delete for ${entity} ${id}:`, err);
     return false;
   }
 }
 window.deleteFromNeonServer = deleteFromNeonServer;
+
+// Server Database Direct Save / Update Helper
+async function saveToNeonServer(entity, data) {
+  try {
+    const res = await fetch('/api/neon/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-tenant-id': data.tenant_id || state.activeTenantId || 'tenant_main'
+      },
+      body: JSON.stringify({ entity, data })
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok || !result.success) {
+      console.warn(`saveToNeonServer error for ${entity}:`, result);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Failed to call /api/neon/save for ${entity}:`, err);
+    return false;
+  }
+}
+window.saveToNeonServer = saveToNeonServer;
 
 // Data Loader dari Neon PostgreSQL Server / Local Fallback
 async function loadAllData() {
@@ -2444,6 +2472,11 @@ function renderModal() {
               </div>
 
               <div class="form-group">
+                <label class="form-label">Email (Opsional, Bebas)</label>
+                <input type="text" id="uform-email" class="form-control" value="${user.email || ''}" placeholder="Boleh dikosongkan atau diisi email apapun"/>
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">Status Akun</label>
                 <select id="uform-status" class="form-control">
                   <option value="active" ${user.status !== 'inactive' ? 'selected' : ''}>Aktif (Bisa Login)</option>
@@ -2899,6 +2932,7 @@ window.processPaymentSubmit = async function() {
       } else {
         state.transactions.unshift(savedTrx);
       }
+      await saveToNeonServer('transactions', savedTrx);
     }
 
     state.cart = [];
@@ -2965,6 +2999,7 @@ window.saveHoldOrder = async function(event) {
       } else {
         state.transactions.unshift(holdTrx);
       }
+      await saveToNeonServer('transactions', holdTrx);
     }
 
     // Reset keranjang kasir
@@ -3386,16 +3421,16 @@ window.saveCategoryForm = async function(event, id) {
 
   if (!name) return;
 
+  const catId = id || customId || `cat_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
+  const payload = { id: catId, name, icon: 'coffee', tenant_id };
+
+  await saveToNeonServer('categories', payload);
+
   if (id) {
     await dbService.updateCategory(id, { name, tenant_id });
     const idx = (state.categories || []).findIndex(c => c.id === id);
     if (idx >= 0) state.categories[idx] = { ...state.categories[idx], name, tenant_id };
   } else {
-    const payload = {
-      name,
-      tenant_id,
-      id: customId || `cat_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`
-    };
     const created = await dbService.createCategory(payload);
     state.categories = state.categories || [];
     state.categories.push(created);
@@ -3477,17 +3512,20 @@ window.handleProductImageUpload = async function(input) {
 
 window.saveProductForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('pform-name').value;
+  const name = document.getElementById('pform-name').value.trim();
   const rawCat = document.getElementById('pform-cat') ? document.getElementById('pform-cat').value : null;
   const category_id = rawCat && rawCat.trim() !== '' ? rawCat.trim() : null;
-  const sku = document.getElementById('pform-sku').value;
-  const price = document.getElementById('pform-price').value;
-  const cost_price = document.getElementById('pform-cost').value;
-  const stock = document.getElementById('pform-stock').value;
-  const image_path = document.getElementById('pform-image-path').value;
+  const sku = document.getElementById('pform-sku').value.trim();
+  const price = Number(document.getElementById('pform-price').value) || 0;
+  const cost_price = Number(document.getElementById('pform-cost').value) || 0;
+  const stock = Number(document.getElementById('pform-stock').value) || 0;
+  const image_path = document.getElementById('pform-image-path').value.trim();
   const tenant_id = getTargetTenantId('pform-tenant');
 
-  const payload = { name, category_id, sku, price, cost_price, stock, image_path, tenant_id };
+  const prodId = id || `prod_${Date.now()}`;
+  const payload = { id: prodId, name, category_id, sku, price, cost_price, stock, image_path, tenant_id, is_active: true };
+
+  await saveToNeonServer('products', payload);
 
   if (id) {
     await dbService.updateProduct(id, payload);
@@ -3621,14 +3659,17 @@ window.handleQrisImageUpload = async function(input) {
 
 window.savePaymentForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('payform-name').value;
+  const name = document.getElementById('payform-name').value.trim();
   const type = document.getElementById('payform-type').value;
-  const account_info = document.getElementById('payform-info').value;
-  const image_path = document.getElementById('payform-image-path').value;
-  const qris_raw_string = document.getElementById('payform-qris-string').value;
+  const account_info = document.getElementById('payform-info').value.trim();
+  const image_path = document.getElementById('payform-image-path').value.trim();
+  const qris_raw_string = document.getElementById('payform-qris-string').value.trim();
   const tenant_id = getTargetTenantId('payform-tenant');
 
-  const payload = { name, type, account_info, image_path, qris_raw_string, tenant_id };
+  const payId = id || `pay_${Date.now()}`;
+  const payload = { id: payId, name, type, account_info, image_path, qris_raw_string, tenant_id, is_active: true };
+
+  await saveToNeonServer('payment_methods', payload);
 
   if (id) {
     await dbService.updatePaymentMethod(id, payload);
@@ -3702,7 +3743,8 @@ window.saveUserForm = async function(event, id) {
   const role = document.getElementById('uform-role').value;
   const pin = document.getElementById('uform-pin').value.trim();
   const tenant_id = (role === 'super_admin') ? null : getTargetTenantId('uform-tenant');
-  const email = `${username}@poshere.com`;
+  const emailEl = document.getElementById('uform-email');
+  const email = emailEl ? emailEl.value.trim() : '';
   const status = document.getElementById('uform-status') ? document.getElementById('uform-status').value : 'active';
 
   if (!username) {
@@ -3715,18 +3757,22 @@ window.saveUserForm = async function(event, id) {
     return;
   }
 
-  const payload = { name, username, role, pin, tenant_id, email, password: pin, status };
+  const duplicate = (state.users || []).find(u => u.username.toLowerCase() === username && u.id !== id);
+  if (duplicate) {
+    showToast(`Username "${username}" sudah digunakan! Gunakan username lain.`, 'danger');
+    return;
+  }
+
+  const userId = id || `usr_${Date.now()}`;
+  const payload = { id: userId, name, username, role, pin, tenant_id, email, password: pin, status };
+
+  await saveToNeonServer('users', payload);
 
   if (id) {
     await dbService.updateUser(id, payload);
     const idx = (state.users || []).findIndex(u => u.id === id);
     if (idx >= 0) state.users[idx] = { ...state.users[idx], ...payload };
   } else {
-    const duplicate = (state.users || []).find(u => u.username.toLowerCase() === username);
-    if (duplicate) {
-      showToast(`Username "${username}" sudah digunakan! Gunakan username lain.`, 'danger');
-      return;
-    }
     const created = await dbService.createUser(payload);
     state.users = state.users || [];
     state.users.push(created);
@@ -3763,6 +3809,8 @@ window.saveTenantSubmit = async function(event) {
   const status = form.tenantStatus.value;
 
   const newTenant = { id, name, slug, phone, address, status };
+  await saveToNeonServer('tenants', newTenant);
+
   const idx = state.tenants.findIndex(t => t.id === id);
   if (idx >= 0) {
     state.tenants[idx] = newTenant;
@@ -4038,14 +4086,17 @@ window.deleteRegister = async function(id) {
 
 window.saveRegisterForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('regform-name').value;
-  const device_code = document.getElementById('regform-code').value;
-  const location = document.getElementById('regform-loc').value;
+  const name = document.getElementById('regform-name').value.trim();
+  const device_code = document.getElementById('regform-code').value.trim();
+  const location = document.getElementById('regform-loc').value.trim();
   const printer_type = document.getElementById('regform-printer-type').value;
-  const paper_width = document.getElementById('regform-paper').value;
+  const paper_width = Number(document.getElementById('regform-paper').value) || 58;
   const tenant_id = getTargetTenantId('regform-tenant');
 
-  const payload = { name, device_code, location, printer_type, paper_width, tenant_id };
+  const regId = id || `reg_${Date.now()}`;
+  const payload = { id: regId, name, device_code, location, printer_type, paper_width, tenant_id, is_active: true };
+
+  await saveToNeonServer('cash_registers', payload);
 
   if (id) {
     await dbService.updateCashRegister(id, payload);

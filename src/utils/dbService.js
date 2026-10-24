@@ -62,7 +62,7 @@ export const dbService = {
       pin: user.pin || '1234',
       status: user.status || 'active',
       tenant_id: user.tenant_id !== undefined ? user.tenant_id : null,
-      email: user.email || `${user.username}@poshere.com`,
+      email: user.email || '',
       created_at: new Date().toISOString()
     };
 
