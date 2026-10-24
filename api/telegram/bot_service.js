@@ -4,17 +4,31 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-3.5-flash';
 
+function sanitizeReply(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*\s*\*/g, '-')
+    .replace(/\*+/g, '')
+    .replace(/_+/g, '')
+    .replace(/^#+\s*/gm, '')
+    .trim();
+}
+
 // Helper to send message to Telegram
 export async function sendTelegramMessage(chatId, text, options = {}) {
   const token = TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing in environment.');
 
+  const clean = options.raw ? text : sanitizeReply(text);
   const payload = {
     chat_id: chatId,
-    text: text,
-    parse_mode: options.parseMode || 'Markdown',
+    text: clean,
     disable_web_page_preview: true
   };
+
+  if (options.parseMode) {
+    payload.parse_mode = options.parseMode;
+  }
 
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -22,19 +36,7 @@ export async function sendTelegramMessage(chatId, text, options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    
-    // If Markdown parsing fails in Telegram, fallback to plain text
-    if (!data.ok && payload.parse_mode) {
-      delete payload.parse_mode;
-      const retryRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      return await retryRes.json();
-    }
-    return data;
+    return await res.json();
   } catch (err) {
     console.error('sendTelegramMessage error:', err);
   }
@@ -196,19 +198,40 @@ ${storeContext.lowStockProducts.length > 0 ? storeContext.lowStockProducts.join(
 ` : 'Data real-time saat ini sedang dimuat ulang.';
 
   const systemInstruction = `
-Kamu adalah "POShere AI", Asisten Cerdas Enterprise untuk aplikasi Point of Sale (POS) POShere.
-Kamu sedang berbicara langsung dengan:
-- Nama: ${user.name}
-- Username Telegram: @${user.telegram_username}
-- Role di Sistem: ${user.role} (Super Administrator / Manajemen)
+Kamu adalah asisten bisnis eksekutif untuk sistem kasir POShere.
+Lawan bicaramu adalah pimpinan/manajemen toko (@${user.telegram_username}).
 
-Kepribadian & Gaya Komunikasi:
-1. Bersahabat, cerdas, profesional, to-the-point, dan sangat membantu layaknya manajer/analis bisnis pribadi.
-2. Gunakan Bahasa Indonesia yang natural, sopan, dan luwes.
-3. Selalu format angka uang dalam Rupiah (contoh: Rp 150.000).
-4. Gunakan format Telegram Markdown yang rapi (bold untuk angka/poin penting, bullet points untuk daftar).
-5. Jawab pertanyaan user secara akurat HANYA berdasarkan data real-time toko yang diberikan di bawah ini. Jika ada informasi yang belum ada di data toko, katakan apa adanya tanpa mengarang data palsu.
-6. Berikan insight atau saran bisnis cerdas jika relevan (misalnya mengingatkan untuk restock jika produk tertentu hampir habis).
+ATURAN FORMAT & KOMUNIKASI (SANGAT KETAT):
+1. LANGSUNG KE INTI:
+   - Jawab secara spesifik apa yang ditanyakan saja.
+   - DILARANG mengulang salam pembuka/formal (seperti "Halo, Super Administrator!", "Senang bisa membantu Anda kembali", dll).
+   - DILARANG membuat kalimat penutup basa-basi (seperti "Ada hal lain yang ingin saya bantu?", "Apakah ada yang ingin dianalisis?").
+   - DILARANG memberi paragraf opini atau "Insight Bisnis" panjang jika pengguna hanya menanyakan data atau angka ringkas.
+
+2. MINIMALIS DAN BERSIH (BEBAS DARI SIMBOL ANEH):
+   - DILARANG KERAS menggunakan simbol bintang (*) atau garis bawah (_) untuk cetak tebal maupun daftar.
+   - HINDARI karakter bertumpuk seperti "* *Teks:* *Angka*".
+   - Untuk daftar, gunakan tanda strip (-) sederhana.
+   - Format angka uang selalu: Rp 50.000 (dengan titik pemisah ribuan).
+   - Buat format yang rapi, padat, dan mudah dibaca cepat di layar ponsel.
+
+3. CONTOH FORMAT YANG BENAR:
+
+   Jika ditanya penjualan/omset:
+   Penjualan Hari Ini:
+   - Omset: Rp 50.000 (1 transaksi berhasil)
+   - Dibatalkan: 2 transaksi
+   - Pembayaran: QRIS (Rp 50.000)
+   - Kasir: Ria Iskandar
+   - Produk Terjual: Mawar Merah (1), Mawar Putih (1)
+
+   Jika ditanya stok barang:
+   Status Stok:
+   - Semua produk aman di atas 10 unit.
+
+   Jika ditanya kasir:
+   Aktivitas Kasir Hari Ini:
+   - Ria Iskandar: 1 transaksi berhasil (Rp 50.000)
 `;
 
   const payload = {
@@ -246,7 +269,7 @@ Kepribadian & Gaya Komunikasi:
   }
 
   if (lastError) throw lastError;
-  return 'Maaf, saya tidak dapat memproses jawaban saat ini. Silakan coba kembali sesaat lagi.';
+  return 'Maaf, saya tidak dapat memproses data saat ini. Silakan coba sesaat lagi.';
 }
 
 // Master handler for any incoming Telegram update
@@ -262,7 +285,7 @@ export async function handleTelegramUpdate(update) {
   // 1. Check if user has a Telegram username
   if (!username) {
     await sendTelegramMessage(chatId, 
-      `Halo *${firstName}*! 👋\n\nAkun Telegram Anda saat ini belum memiliki *Username* (@).\n\nAplikasi POShere Enterprise menggunakan Username Telegram untuk mengenali hak akses Anda secara otomatis.\n\n*Cara mengaktifkan:*\n1. Buka Pengaturan Telegram (Settings).\n2. Pilih *Username / Nama Pengguna*.\n3. Buat username Anda, lalu hubungi Admin toko untuk mendaftarkannya.`
+      `Halo ${firstName},\n\nAkun Telegram Anda belum memiliki Username (@).\n\nPOShere mengenali hak akses Anda melalui Username Telegram.\n\nCara mengaktifkan:\n1. Buka Pengaturan Telegram (Settings)\n2. Pilih Username / Nama Pengguna\n3. Buat username, lalu daftarkan ke Admin toko.`
     );
     return { status: 'rejected', reason: 'no_username' };
   }
@@ -277,7 +300,7 @@ export async function handleTelegramUpdate(update) {
 
   if (matchedUsers.length === 0) {
     await sendTelegramMessage(chatId, 
-      `Maaf @${username}, akun Telegram Anda *belum terdaftar* di sistem POShere Enterprise.\n\nSilakan hubungi Super Administrator untuk mendaftarkan username *@${username}* pada menu Manajemen Pengguna POS.`
+      `Maaf @${username}, akun Telegram Anda belum terdaftar di sistem POShere.\n\nSilakan hubungi Administrator untuk mendaftarkan username @${username}.`
     );
     return { status: 'unauthorized', username };
   }
@@ -295,7 +318,7 @@ export async function handleTelegramUpdate(update) {
 
   // 4. Handle /start command
   if (rawText.toLowerCase() === '/start') {
-    const welcomeMsg = `Halo *${user.name}* (${user.role.toUpperCase()})! 👋\n\nSelamat datang di *POShere Enterprise AI Assistant*.\n\nSaya asisten AI toko Anda yang terhubung langsung dengan database POS. Anda bisa bertanya apa saja secara bebas (*free-text*), misalnya:\n\n• _"Berapa total omset hari ini?"_\n• _"Ada produk yang stoknya mau habis?"_\n• _"Siapa kasir dengan transaksi terbanyak hari ini?"_\n• _"Produk apa yang paling laku?"_\n• _"Rangkum penjualan hari ini dong"_\n\nSilakan ketik pertanyaan Anda sekarang!`;
+    const welcomeMsg = `Halo! POShere Assistant siap membantu.\n\nSistem toko sudah terhubung secara real-time. Anda bisa langsung menanyakan penjualan hari ini, cek stok barang, atau aktivitas kasir.`;
     await sendTelegramMessage(chatId, welcomeMsg);
     return { status: 'started', username };
   }
