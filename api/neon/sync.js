@@ -126,22 +126,26 @@ export default async function handler(req, res) {
 
     // 3. Users
     for (const u of users) {
-      await sql`
-        INSERT INTO users (id, username, name, role, pin, status, email, password, tenant_id)
-        VALUES (
-          ${u.id}, ${u.username}, ${u.name}, ${u.role || 'kasir'}, 
-          ${u.pin || '1234'}, ${u.status || 'active'}, ${u.email || ''}, 
-          ${u.password || u.pin || '1234'}, ${u.tenant_id || (u.role === 'super_admin' ? null : activeTenantId)}
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          role = EXCLUDED.role,
-          pin = EXCLUDED.pin,
-          status = EXCLUDED.status,
-          email = EXCLUDED.email,
-          password = EXCLUDED.password,
-          tenant_id = EXCLUDED.tenant_id;
-      `;
+      try {
+        await sql`
+          INSERT INTO users (id, username, name, role, pin, status, email, password, tenant_id)
+          VALUES (
+            ${u.id}, ${u.username}, ${u.name}, ${u.role || 'kasir'}, 
+            ${u.pin || '1234'}, ${u.status || 'active'}, ${u.email || ''}, 
+            ${u.password || u.pin || '1234'}, ${u.tenant_id || (u.role === 'super_admin' ? null : activeTenantId)}
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            role = EXCLUDED.role,
+            pin = EXCLUDED.pin,
+            status = EXCLUDED.status,
+            email = EXCLUDED.email,
+            password = EXCLUDED.password,
+            tenant_id = EXCLUDED.tenant_id;
+        `;
+      } catch (errUser) {
+        console.warn('Sync user error for ' + u.username, errUser.message);
+      }
     }
 
     // 4. Payment Methods
