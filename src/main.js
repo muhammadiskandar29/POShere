@@ -443,7 +443,7 @@ function renderSidebar() {
           ${(isSuperAdmin || hasMenuAccess('settings')) ? `
             <div class="nav-item ${state.currentView === 'settings' ? 'active' : ''}" onclick="window.setView('settings')">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-              <span>Database Server (Neon Cloud)</span>
+              <span>Sinkronisasi Data Cloud</span>
               <span style="font-size:0.65rem; background:#eff6ff; color:#2563eb; font-weight:700; padding:2px 6px; border-radius:99px; margin-left:auto;">CLOUD</span>
             </div>
           ` : ''}
@@ -523,9 +523,9 @@ function renderTopbar() {
             <span>${state.currentUser?.tenant_name || 'Toko Utama'}</span>
           </div>
         `}
-        <div class="topbar-chip cloud-chip" title="Terhubung langsung ke Neon PostgreSQL Cloud (AWS)">
+        <div class="topbar-chip cloud-chip" title="Sistem terhubung online secara aman dan real-time">
           <span class="pulse-indicator"></span>
-          <span>Neon Cloud Server</span>
+          <span>Cloud Online</span>
         </div>
         <div class="topbar-chip role-chip badge-${(state.currentUser?.role || 'kasir').replace('_', '')}">
           ${(state.currentUser?.role || 'kasir').toUpperCase()}
@@ -924,7 +924,7 @@ function renderPaymentsView() {
               <th>Tipe</th>
               <th>Info Rekening / NMID</th>
               <th>Gambar QR</th>
-              <th>Raw QRIS String</th>
+              <th>Status QRIS</th>
               <th>Status</th>
               <th>Aksi</th>
             </tr>
@@ -953,12 +953,12 @@ function renderPaymentsView() {
                     </a>
                   ` : '-'}
                 </td>
-                <td style="max-width: 200px;">
-                  ${pay.qris_raw_string ? `
-                    <div style="font-family: monospace; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${pay.qris_raw_string}">
-                      ${pay.qris_raw_string}
-                    </div>
-                  ` : '-'}
+                <td>
+                  ${pay.type === 'qris' ? (
+                    pay.qris_raw_string 
+                      ? `<span class="role-badge badge-kasir" style="background: #f0fdf4; color: #15803d; font-size: 0.72rem; font-weight: 700;">✓ QRIS Aktif</span>` 
+                      : `<span class="role-badge badge-owner" style="background: #fffbeb; color: #b45309; font-size: 0.72rem;">Belum Terdeteksi</span>`
+                  ) : '<span style="color: var(--text-muted); font-size: 0.75rem;">-</span>'}
                 </td>
                 <td>
                   <span class="role-badge ${pay.is_active ? 'badge-kasir' : 'badge-owner'}">
@@ -1173,7 +1173,7 @@ function renderTransactionsView() {
         <div>
           <h2 style="font-size: 1.1rem; font-weight: 700;">Riwayat Transaksi Penjualan</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
-            Seluruh transaksi penjualan kasir tersimpan aman dan terenkripsi di server database cloud • <strong style="color: #2563eb;">🏪 ${getTenantName(state.activeTenantId)}</strong>
+            Seluruh transaksi penjualan kasir tersimpan rapi dan aman • <strong style="color: #2563eb;">🏪 ${getTenantName(state.activeTenantId)}</strong>
           </p>
         </div>
       </div>
@@ -1520,7 +1520,7 @@ function renderReportsView() {
 function renderSettingsView() {
   return `
     <div style="max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem;">
-      <!-- Neon PostgreSQL Cloud Server Card -->
+      <!-- Cloud Server Card -->
       <div class="card" style="border: 2px solid #3b82f6; background: #ffffff; padding: 1.5rem; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.08);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -1528,27 +1528,27 @@ function renderSettingsView() {
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
             </div>
             <div>
-              <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--text-main); margin: 0;">Neon PostgreSQL Cloud Server</h2>
-              <span style="font-size: 0.78rem; color: var(--text-muted);">Database Server Utama (Production Cloud AWS us-east-1)</span>
+              <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--text-main); margin: 0;">Pusat Data Cloud POS</h2>
+              <span style="font-size: 0.78rem; color: var(--text-muted);">Pusat sinkronisasi dan penyimpanan data toko secara real-time</span>
             </div>
           </div>
           <span id="neon-badge-status" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; background: #eff6ff; color: #1d4ed8; font-weight: 700; padding: 5px 12px; border-radius: 99px; border: 1px solid #bfdbfe;">
             <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 8px #2563eb;"></span>
-            <span>NEON SERVER ONLINE</span>
+            <span>SERVER CLOUD AKTIF</span>
           </span>
         </div>
 
         <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: 12px; padding: 1.1rem; margin: 1.25rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.8rem;">
           <div>
-            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Database Engine</div>
-            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">PostgreSQL 16 (Neon)</div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Status Koneksi</div>
+            <div style="font-weight: 700; color: #16a34a; font-size: 0.95rem; margin-top: 2px;">Terhubung Aman (SSL)</div>
           </div>
           <div>
-            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Host Endpoint</div>
-            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">ep-lingering-tree-b8tc55nw</div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Penyimpanan</div>
+            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">Cloud Database Otomatis</div>
           </div>
           <div>
-            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Data Cloud Aktif</div>
+            <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Data Toko Aktif</div>
             <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-top: 2px;">
               ${(state.products || []).length} Produk / ${(state.categories || []).length} Kategori
             </div>
@@ -1557,15 +1557,15 @@ function renderSettingsView() {
 
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
           <button type="button" class="btn btn-primary btn-icon-text" onclick="window.syncDataToNeonServer()" style="padding: 10px 18px; background: #2563eb; border-color: #2563eb;">
-            ${getIcon('save', 16)} <span>Push Data ke Neon Cloud Server</span>
+            ${getIcon('save', 16)} <span>Sinkronkan Data ke Cloud</span>
           </button>
           <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.pullDataFromNeonServer()" style="padding: 10px 18px;">
-            ${getIcon('package', 16)} <span>Pull Data Terbaru dari Neon Server</span>
+            ${getIcon('package', 16)} <span>Ambil Data Terbaru dari Cloud</span>
           </button>
         </div>
       </div>
 
-      <!-- MySQL Local (XAMPP) Card -->
+      <!-- MySQL Local Backup Card -->
       <div class="card" style="border: 1px solid var(--border-light); background: #ffffff; padding: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -1573,13 +1573,13 @@ function renderSettingsView() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
             </div>
             <div>
-              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin: 0;">Database MySQL Server (XAMPP Backup)</h2>
-              <span style="font-size: 0.78rem; color: var(--text-muted);">Penyimpanan lokal cadangan offline (localhost:3306)</span>
+              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin: 0;">Cadangan Data Lokal (Offline)</h2>
+              <span style="font-size: 0.78rem; color: var(--text-muted);">Penyimpanan cadangan otomatis di perangkat kasir</span>
             </div>
           </div>
           <span id="mysql-badge-status" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; background: #ecfdf5; color: #059669; font-weight: 700; padding: 4px 10px; border-radius: 99px; border: 1px solid #a7f3d0;">
             <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981;"></span>
-            <span>PORT 3306 BACKUP</span>
+            <span>BACKUP LOKAL AKTIF</span>
           </span>
         </div>
 
@@ -1689,11 +1689,11 @@ function renderTenantsView() {
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
           <div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
-              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em;">Multi-Tenant Architecture</span>
-              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #ffffff; padding: 3px 8px; border-radius: 6px;">Live Cloud</span>
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em;">Manajemen Toko & Cabang</span>
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #ffffff; padding: 3px 8px; border-radius: 6px;">Sistem Aktif</span>
             </div>
-            <h1 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: #ffffff;">Manajemen Toko & Multi-Tenant</h1>
-            <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem;">Kelola daftar toko/cabang dan isolasi data operasional kasir per merchant.</p>
+            <h1 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: #ffffff;">Manajemen Toko & Cabang</h1>
+            <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem;">Kelola daftar cabang dan seluruh operasional kasir masing-masing toko.</p>
           </div>
           <button class="btn btn-primary" style="background: #ffffff; color: #1e1b4b; font-weight: 700; padding: 0.7rem 1.25rem; border-radius: 10px; display: inline-flex; align-items: center; gap: 0.5rem; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="window.openTenantModal()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1712,12 +1712,12 @@ function renderTenantsView() {
         <div class="card" style="padding: 1.25rem; border-left: 4px solid #10b981;">
           <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Produk Terdaftar</div>
           <div style="font-size: 1.75rem; font-weight: 800; color: var(--text-main); margin-top: 0.25rem;">${(state.products || []).length}</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Item di database cloud</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Item di seluruh toko</div>
         </div>
         <div class="card" style="padding: 1.25rem; border-left: 4px solid #f59e0b;">
           <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Transaksi Sistem</div>
           <div style="font-size: 1.75rem; font-weight: 800; color: var(--text-main); margin-top: 0.25rem;">${(state.transactions || []).length}</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Tercatat dengan tenant_id terisolasi</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Riwayat penjualan tercatat rapi</div>
         </div>
         <div class="card" style="padding: 1.25rem; border-left: 4px solid #3b82f6;">
           <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Filter Tampilan Aktif</div>
@@ -2105,15 +2105,17 @@ function renderModal() {
 
             <div id="qris-checkout-container" style="display: none;">
               <div class="qris-display-box">
-                <div style="font-size: 0.8rem; font-weight: 700; color: var(--primary-focus);">QRIS DINAMIS OTOMATIS</div>
-                <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-                  Scan QR ini, nominal <strong>${formatRupiah(grandTotal)}</strong> otomatis terisi tanpa ketik manual!
+                <div style="font-size: 0.82rem; font-weight: 700; color: var(--primary-focus);">QRIS PEMBAYARAN</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                  Scan QR ini, nominal <strong>${formatRupiah(grandTotal)}</strong> otomatis terisi pada aplikasi pembayaran.
                 </div>
                 <div class="qris-canvas-wrapper">
                   <canvas id="qris-dynamic-canvas"></canvas>
                 </div>
-                <div style="margin-top: 0.5rem; font-size: 0.68rem; font-family: monospace; color: #64748b; word-break: break-all;" id="qris-dynamic-string-display">
+                <div style="margin-top: 0.4rem; font-size: 0.72rem; color: #64748b; font-weight: 500;">
+                  Mendukung BCA, Mandiri, BRI, BNI, GoPay, OVO, Dana, ShopeePay & semua bank
                 </div>
+                <div style="display: none;" id="qris-dynamic-string-display"></div>
               </div>
             </div>
 
@@ -2236,10 +2238,10 @@ function renderModal() {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Kode / ID Kategori (Opsional)</label>
-                <input type="text" id="catform-id" class="form-control" value="${cat.id || ''}" placeholder="Misal: cat_matcha, cat_snack (dibuat otomatis jika kosong)" ${cat.id ? 'disabled' : ''}/>
-                <small style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">
-                  ID unik kategori sebagai referensi di database Neon Cloud.
+                <label class="form-label">Kode Kategori (Opsional)</label>
+                <input type="text" id="catform-id" class="form-control" value="${cat.id || ''}" placeholder="Misal: cat_matcha, cat_snack" ${cat.id ? 'disabled' : ''}/>
+                <small style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">
+                  Dibuat otomatis oleh sistem jika dikosongkan.
                 </small>
               </div>
             </div>
@@ -2318,7 +2320,7 @@ function renderModal() {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Upload Foto Produk (Base64 -> Public Folder)</label>
+                <label class="form-label">Foto Produk (Opsional)</label>
                 <input type="file" id="pform-file" class="form-control" accept="image/*" onchange="window.handleProductImageUpload(this)"/>
                 <input type="hidden" id="pform-image-path" value="${prod.image_path || ''}"/>
                 <div id="pform-preview" style="margin-top: 0.5rem;">
@@ -2328,7 +2330,7 @@ function renderModal() {
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
-              <button type="submit" class="btn btn-primary">Simpan ke Database</button>
+              <button type="submit" class="btn btn-primary">Simpan Produk</button>
             </div>
           </form>
         </div>
@@ -2369,7 +2371,7 @@ function renderModal() {
               <div class="form-group">
                 <label class="form-label">Tipe Metode Pembayaran *</label>
                 <select id="payform-type" class="form-control" onchange="window.togglePaymentTypeFields(this.value)">
-                  <option value="qris" ${pay.type === 'qris' ? 'selected' : ''}>QRIS (Statis ke Dinamis)</option>
+                  <option value="qris" ${pay.type === 'qris' ? 'selected' : ''}>QRIS (Dinamis Otomatis)</option>
                   <option value="cash" ${pay.type === 'cash' ? 'selected' : ''}>Cash / Tunai</option>
                   <option value="transfer" ${pay.type === 'transfer' ? 'selected' : ''}>Transfer Bank (BCA, BRI, Mandiri, BNI)</option>
                   <option value="ewallet" ${pay.type === 'ewallet' ? 'selected' : ''}>E-Wallet (GoPay, OVO, ShopeePay, DANA)</option>
@@ -2385,9 +2387,9 @@ function renderModal() {
 
               <div id="payform-qris-section" style="${pay.type !== 'qris' ? 'display:none;' : ''}">
                 <div class="form-group" style="background: #faf5ff; padding: 0.85rem; border-radius: var(--radius-sm); border: 1px dashed var(--primary-border);">
-                  <label class="form-label" style="color: var(--primary-focus);">Upload Gambar QRIS (Base64 ke public/uploads)</label>
-                  <p style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-                    Upload foto QRIS toko. Sistem otomatis <strong>membaca QR code menjadi string teks</strong>!
+                  <label class="form-label" style="color: var(--primary-focus); font-weight: 700;">Foto / Barcode QRIS Toko</label>
+                  <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                    Unggah foto barcode standing QRIS toko. Sistem akan mendeteksi QRIS toko secara otomatis.
                   </p>
                   <input type="file" id="payform-file" class="form-control" accept="image/*" onchange="window.handleQrisImageUpload(this)"/>
                   <input type="hidden" id="payform-image-path" value="${pay.image_path || ''}"/>
@@ -2397,17 +2399,17 @@ function renderModal() {
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">String QRIS Statis</label>
-                  <textarea id="payform-qris-string" class="form-control" rows="3" placeholder="000201010211...">${pay.qris_raw_string || ''}</textarea>
-                  <small style="font-size: 0.7rem; color: var(--text-muted);">
-                    String ini yang akan diubah menjadi QRIS dinamis secara otomatis pada setiap transaksi.
+                  <label class="form-label">Kode QRIS Toko</label>
+                  <textarea id="payform-qris-string" class="form-control" rows="2" placeholder="Kode QRIS otomatis terdeteksi saat foto diunggah..." disabled readonly style="background: var(--bg-hover, #f8fafc); color: var(--text-secondary); font-size: 0.75rem; cursor: not-allowed; resize: none;">${pay.qris_raw_string || ''}</textarea>
+                  <small style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Kode QRIS ini akan otomatis membuat QR dinamis dengan nominal pas pada setiap transaksi.
                   </small>
                 </div>
               </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
-              <button type="submit" class="btn btn-primary">Simpan ke Database</button>
+              <button type="submit" class="btn btn-primary">Simpan Metode Pembayaran</button>
             </div>
           </form>
         </div>
@@ -2472,8 +2474,8 @@ function renderModal() {
               </div>
 
               <div class="form-group">
-                <label class="form-label">Email (Opsional, Bebas)</label>
-                <input type="text" id="uform-email" class="form-control" value="${user.email || ''}" placeholder="Boleh dikosongkan atau diisi email apapun"/>
+                <label class="form-label">Alamat Email (Opsional)</label>
+                <input type="email" id="uform-email" class="form-control" value="${user.email || ''}" placeholder="nama@email.com (opsional)"/>
               </div>
 
               <div class="form-group">
@@ -3195,7 +3197,7 @@ window.syncDataToNeonServer = async function(isSilent = false) {
       if (!isSilent) {
         await showAlertDialog({
           title: 'Sinkronisasi Cloud Berhasil',
-          message: `Data berhasil disimpan ke Neon Cloud PostgreSQL Server!\n\n` +
+          message: `Data berhasil disimpan ke Cloud Server POS!\n\n` +
                 `• ${result.synced?.products || 0} Produk\n` +
                 `• ${result.synced?.categories || 0} Kategori\n` +
                 `• ${result.synced?.payment_methods || 0} Metode Bayar\n` +
@@ -3207,14 +3209,14 @@ window.syncDataToNeonServer = async function(isSilent = false) {
     } else if (!isSilent) {
       await showAlertDialog({
         title: 'Gagal Sinkronisasi',
-        message: 'Gagal sync ke Neon Server: ' + (result.error || result.message),
+        message: 'Gagal sinkronisasi data ke Cloud: ' + (result.error || result.message),
         type: 'danger'
       });
     }
   } catch (err) {
     if (!isSilent) {
       await showAlertDialog({
-        title: 'Error Koneksi Neon Server',
+        title: 'Gangguan Koneksi Cloud Server',
         message: err.message,
         type: 'danger'
       });
@@ -3233,13 +3235,13 @@ window.pullDataFromNeonServer = async function() {
       renderApp();
       await showAlertDialog({
         title: 'Tarik Data Cloud Berhasil',
-        message: `Berhasil menarik data dari Neon PostgreSQL Cloud Server:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`,
+        message: `Data terbaru berhasil diperbarui dari Cloud Server:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`,
         type: 'success'
       });
     } else {
       await showAlertDialog({
         title: 'Gagal Ambil Data',
-        message: 'Gagal mengambil data dari Neon Server: ' + (result.error || result.message),
+        message: 'Gagal mengambil data dari Cloud Server: ' + (result.error || result.message),
         type: 'danger'
       });
     }
@@ -3587,7 +3589,7 @@ window.deletePayment = async function(id) {
 window.togglePaymentTypeFields = function(type) {
   const sec = document.getElementById('payform-qris-section');
   if (sec) {
-    sec.style.display = (type === 'cash') ? 'none' : 'block';
+    sec.style.display = (type === 'qris') ? 'block' : 'none';
   }
 };
 
@@ -3638,13 +3640,13 @@ window.handleQrisImageUpload = async function(input) {
                  `• Merchant : ${parsed.merchantName || 'Terdeteksi'}\n` +
                  `• NMID     : ${parsed.nmid || 'Terdeteksi'}\n` +
                  `• Kota     : ${parsed.merchantCity || 'Indonesia'}\n\n` +
-                 `Data QRIS statis telah diisikan ke formulir.`,
+                 `Data QRIS toko berhasil diterapkan ke formulir pembayaran.`,
         type: 'success'
       });
     } else {
       await showAlertDialog({
         title: 'Gambar Terunggah',
-        message: 'Gambar berhasil diunggah, namun kode QR belum terdeteksi secara otomatis.\n\nTips: Pastikan kotak QR code tidak terpotong, atau Anda dapat menempelkan (paste) string QRIS secara manual di kolom teks.',
+        message: 'Gambar berhasil diunggah, namun barcode QR belum terdeteksi secara otomatis.\n\nTips: Pastikan foto QRIS tampak jelas, pencahayaan cukup, dan area barcode QR tidak terpotong atau buram.',
         type: 'warning'
       });
     }
@@ -3846,7 +3848,7 @@ window.deleteTenant = async function(id) {
   const tenant = (state.tenants || []).find(t => t.id === id);
   const confirmed = await showConfirmDialog({
     title: 'Hapus Toko & Data Tenant',
-    message: `Apakah Anda yakin ingin menghapus toko "${tenant?.name || id}"?\n\nPERINGATAN: Seluruh produk, kategori, metode bayar, mesin kasir, dan riwayat transaksi terkait toko ini akan ikut terhapus secara permanen dari cloud database!`,
+    message: `Apakah Anda yakin ingin menghapus toko "${tenant?.name || id}"?\n\nPERINGATAN: Seluruh produk, kategori, metode bayar, mesin kasir, dan riwayat transaksi terkait toko ini akan ikut terhapus secara permanen dari sistem!`,
     confirmText: 'Ya, Hapus Toko Permanen',
     cancelText: 'Batal',
     type: 'danger',
@@ -3932,7 +3934,7 @@ window.saveRolePermissions = async function() {
     if (res.ok) {
       await showAlertDialog({
         title: 'Hak Akses Disimpan',
-        message: 'Konfigurasi Hak Akses Role (RBAC) berhasil disimpan dan diperbarui di Cloud Database!',
+        message: 'Konfigurasi Hak Akses Pengguna (Role) berhasil disimpan!',
         type: 'success'
       });
       await loadAllData();
@@ -3940,7 +3942,7 @@ window.saveRolePermissions = async function() {
     } else {
       await showAlertDialog({
         title: 'Gagal Menyimpan Role',
-        message: 'Gagal menyimpan izin akses ke server database.',
+        message: 'Gagal menyimpan izin akses ke server.',
         type: 'danger'
       });
     }
