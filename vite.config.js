@@ -248,12 +248,12 @@ function monolithicApiPlugin() {
               let categories, products, users, payment_methods, cash_registers, transactions;
 
               if (requestedTenantId && requestedTenantId !== 'all') {
-                categories = await neonSql`SELECT * FROM categories WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-                products = await neonSql`SELECT * FROM products WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-                users = await neonSql`SELECT id, username, name, role, email, status, tenant_id, created_at FROM users WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-                payment_methods = await neonSql`SELECT * FROM payment_methods WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-                cash_registers = await neonSql`SELECT * FROM cash_registers WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-                transactions = await neonSql`SELECT * FROM transactions WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY created_at DESC;`;
+                categories = await neonSql`SELECT * FROM categories WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+                products = await neonSql`SELECT * FROM products WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+                users = await neonSql`SELECT id, username, name, role, email, status, tenant_id, created_at FROM users WHERE tenant_id = ${requestedTenantId} OR role = 'super_admin' ORDER BY name ASC;`;
+                payment_methods = await neonSql`SELECT * FROM payment_methods WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+                cash_registers = await neonSql`SELECT * FROM cash_registers WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+                transactions = await neonSql`SELECT * FROM transactions WHERE tenant_id = ${requestedTenantId} ORDER BY created_at DESC;`;
               } else {
                 categories = await neonSql`SELECT * FROM categories ORDER BY name ASC;`;
                 products = await neonSql`SELECT * FROM products ORDER BY name ASC;`;
@@ -456,7 +456,16 @@ function monolithicApiPlugin() {
                   ${t.grand_total || 0}, ${t.paid_amount || 0}, ${t.change_amount || 0},
                   ${t.tenant_id || activeTenantId}
                 )
-                ON CONFLICT (id) DO NOTHING;
+                ON CONFLICT (id) DO UPDATE SET
+                  payment_status = EXCLUDED.payment_status,
+                  items = EXCLUDED.items,
+                  subtotal = EXCLUDED.subtotal,
+                  tax_amount = EXCLUDED.tax_amount,
+                  discount_amount = EXCLUDED.discount_amount,
+                  grand_total = EXCLUDED.grand_total,
+                  paid_amount = EXCLUDED.paid_amount,
+                  change_amount = EXCLUDED.change_amount,
+                  tenant_id = EXCLUDED.tenant_id;
               `;
             }
 

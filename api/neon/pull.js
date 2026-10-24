@@ -40,12 +40,12 @@ export default async function handler(req, res) {
     let categories, products, users, payment_methods, cash_registers, transactions;
 
     if (requestedTenantId && requestedTenantId !== 'all') {
-      categories = await sql`SELECT * FROM categories WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-      products = await sql`SELECT * FROM products WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-      users = await sql`SELECT id, username, name, role, email, status, tenant_id, created_at FROM users WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-      payment_methods = await sql`SELECT * FROM payment_methods WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-      cash_registers = await sql`SELECT * FROM cash_registers WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
-      transactions = await sql`SELECT * FROM transactions WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY created_at DESC;`;
+      categories = await sql`SELECT * FROM categories WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+      products = await sql`SELECT * FROM products WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+      users = await sql`SELECT id, username, name, role, email, status, tenant_id, created_at FROM users WHERE tenant_id = ${requestedTenantId} OR role = 'super_admin' ORDER BY name ASC;`;
+      payment_methods = await sql`SELECT * FROM payment_methods WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+      cash_registers = await sql`SELECT * FROM cash_registers WHERE tenant_id = ${requestedTenantId} ORDER BY name ASC;`;
+      transactions = await sql`SELECT * FROM transactions WHERE tenant_id = ${requestedTenantId} ORDER BY created_at DESC;`;
     } else {
       categories = await sql`SELECT * FROM categories ORDER BY name ASC;`;
       products = await sql`SELECT * FROM products ORDER BY name ASC;`;

@@ -202,7 +202,16 @@ export default async function handler(req, res) {
           ${t.grand_total || 0}, ${t.paid_amount || 0}, ${t.change_amount || 0},
           ${t.tenant_id || activeTenantId}
         )
-        ON CONFLICT (id) DO NOTHING;
+        ON CONFLICT (id) DO UPDATE SET
+          payment_status = EXCLUDED.payment_status,
+          items = EXCLUDED.items,
+          subtotal = EXCLUDED.subtotal,
+          tax_amount = EXCLUDED.tax_amount,
+          discount_amount = EXCLUDED.discount_amount,
+          grand_total = EXCLUDED.grand_total,
+          paid_amount = EXCLUDED.paid_amount,
+          change_amount = EXCLUDED.change_amount,
+          tenant_id = EXCLUDED.tenant_id;
       `;
     }
 

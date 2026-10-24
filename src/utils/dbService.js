@@ -61,6 +61,8 @@ export const dbService = {
       role: user.role,
       pin: user.pin || '1234',
       status: user.status || 'active',
+      tenant_id: user.tenant_id !== undefined ? user.tenant_id : null,
+      email: user.email || `${user.username}@poshere.com`,
       created_at: new Date().toISOString()
     };
 
@@ -120,6 +122,7 @@ export const dbService = {
       id: category.id || `cat_${Date.now()}`,
       name: category.name,
       icon: category.icon || 'tag',
+      tenant_id: category.tenant_id || null,
       created_at: new Date().toISOString()
     };
 
@@ -183,6 +186,7 @@ export const dbService = {
       sku: product.sku || `SKU-${Date.now().toString().slice(-4)}`,
       image_path: product.image_path || '',
       is_active: product.is_active !== undefined ? product.is_active : true,
+      tenant_id: product.tenant_id || null,
       created_at: new Date().toISOString()
     };
 
@@ -252,6 +256,7 @@ export const dbService = {
       qris_raw_string: payment.qris_raw_string || '',
       image_path: payment.image_path || '',
       is_active: payment.is_active !== undefined ? payment.is_active : true,
+      tenant_id: payment.tenant_id || null,
       created_at: new Date().toISOString()
     };
 
@@ -314,6 +319,7 @@ export const dbService = {
       paper_width: Number(reg.paper_width) || 58,
       location: reg.location || 'Counter',
       is_active: reg.is_active !== undefined ? reg.is_active : true,
+      tenant_id: reg.tenant_id || null,
       created_at: new Date().toISOString()
     };
 
@@ -391,6 +397,7 @@ export const dbService = {
       qris_dynamic_string: trx.qris_dynamic_string || '',
       status: trx.status || 'completed',
       note: trx.note || '',
+      tenant_id: trx.tenant_id || null,
       created_at: trx.created_at || new Date().toISOString()
     };
 

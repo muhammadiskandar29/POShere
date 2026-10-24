@@ -22,7 +22,13 @@ const state = {
     role: 'owner',
     permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer']
   },
-  activeTenantId: localStorage.getItem('poshere_active_tenant_id') || 'all',
+  activeTenantId: (() => {
+    const savedUser = JSON.parse(localStorage.getItem('poshere_jwt_user') || 'null');
+    if (savedUser && savedUser.role !== 'super_admin' && savedUser.tenant_id) {
+      return savedUser.tenant_id;
+    }
+    return localStorage.getItem('poshere_active_tenant_id') || 'all';
+  })(),
   tenants: [],
   roles: [],
   currentView: 'pos', // 'pos', 'products', 'categories', 'payments', 'registers', 'users', 'transactions', 'reports', 'printer', 'tenants', 'roles', 'settings'
@@ -53,6 +59,30 @@ const state = {
   }
 };
 
+// Multi-Tenant Mapping Helpers
+function getTargetTenantId(overrideElementId = null) {
+  if (overrideElementId) {
+    const el = document.getElementById(overrideElementId);
+    if (el && el.value) return el.value;
+  }
+  // Pengguna biasa (Kasir/Owner/Manager) selalu terikat ke tenant mereka
+  if (state.currentUser && state.currentUser.role !== 'super_admin' && state.currentUser.tenant_id) {
+    return state.currentUser.tenant_id;
+  }
+  // Jika Super Admin memilih tenant tertentu di filter
+  if (state.activeTenantId && state.activeTenantId !== 'all') {
+    return state.activeTenantId;
+  }
+  // Default fallback ke tenant pertama
+  return state.tenants[0]?.id || 'tenant_main';
+}
+
+function getTenantName(tenantId) {
+  if (!tenantId) return 'Platform Global';
+  const found = (state.tenants || []).find(t => t.id === tenantId);
+  return found ? found.name : tenantId;
+}
+
 // RBAC Helper: Cek hak akses role pengguna terhadap suatu menu
 function hasMenuAccess(menuId) {
   if (!state.currentUser) return false;
@@ -73,6 +103,11 @@ const formatRupiah = (num) => {
 // Data Loader dari Neon PostgreSQL Server / Local Fallback
 async function loadAllData() {
   try {
+    // Kunci activeTenantId ke tenant pengguna jika bukan super_admin
+    if (state.currentUser && state.currentUser.role !== 'super_admin' && state.currentUser.tenant_id) {
+      state.activeTenantId = state.currentUser.tenant_id;
+    }
+
     // 1. Prioritas ambil data langsung dari Neon PostgreSQL Server
     try {
       const tenantParam = state.activeTenantId && state.activeTenantId !== 'all' ? `?tenant_id=${encodeURIComponent(state.activeTenantId)}` : '';
@@ -432,7 +467,16 @@ function renderTopbar() {
 
 // 1. POS View
 function renderPosView() {
-  let filteredProducts = state.products.filter(p => p.is_active);
+  const currentTenantFilter = state.activeTenantId;
+  const tenantProducts = (currentTenantFilter && currentTenantFilter !== 'all')
+    ? state.products.filter(p => p.tenant_id === currentTenantFilter)
+    : state.products;
+
+  const tenantCategories = (currentTenantFilter && currentTenantFilter !== 'all')
+    ? state.categories.filter(c => c.tenant_id === currentTenantFilter)
+    : state.categories;
+
+  let filteredProducts = tenantProducts.filter(p => p.is_active);
 
   if (state.selectedCategory !== 'all') {
     filteredProducts = filteredProducts.filter(p => p.category_id === state.selectedCategory);
@@ -467,10 +511,10 @@ function renderPosView() {
           <button class="cat-chip ${state.selectedCategory === 'all' ? 'active' : ''}" 
                   onclick="window.setCategory('all')">
             <span>Semua Menu</span>
-            <span class="chip-badge">${state.products.filter(p => p.is_active).length}</span>
+            <span class="chip-badge">${tenantProducts.filter(p => p.is_active).length}</span>
           </button>
-          ${state.categories.map(c => {
-            const count = state.products.filter(p => p.is_active && p.category_id === c.id).length;
+          ${tenantCategories.map(c => {
+            const count = tenantProducts.filter(p => p.is_active && p.category_id === c.id).length;
             return `
               <button class="cat-chip ${state.selectedCategory === c.id ? 'active' : ''}" 
                       onclick="window.setCategory('${c.id}')">
@@ -633,12 +677,20 @@ function renderPosView() {
 
 // 2. Master Products View
 function renderProductsView() {
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
+  const displayProducts = (state.activeTenantId && state.activeTenantId !== 'all')
+    ? state.products.filter(p => p.tenant_id === state.activeTenantId)
+    : state.products;
+
   return `
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
           <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Produk & Manajemen Stok</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted);">Kelola katalog produk, harga jual, harga modal, stok gudang, dan SKU toko</p>
+          <p style="font-size: 0.78rem; color: var(--text-muted);">
+            Kelola katalog produk, harga jual, harga modal, stok gudang, dan SKU toko
+            ${state.activeTenantId !== 'all' ? ` • <strong style="color: #2563eb;">${getTenantName(state.activeTenantId)}</strong>` : ' • <strong>Semua Toko</strong>'}
+          </p>
         </div>
         <button class="btn btn-primary" onclick="window.openProductForm()">
           + Tambah Produk Baru
@@ -651,6 +703,7 @@ function renderProductsView() {
             <tr>
               <th>Gambar</th>
               <th>Nama Produk</th>
+              ${isSuperAdmin ? '<th>Toko / Tenant</th>' : ''}
               <th>Kategori</th>
               <th>Harga Jual</th>
               <th>Harga Modal</th>
@@ -661,7 +714,13 @@ function renderProductsView() {
             </tr>
           </thead>
           <tbody>
-            ${state.products.map(p => {
+            ${displayProducts.length === 0 ? `
+              <tr>
+                <td colspan="${isSuperAdmin ? 10 : 9}" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                  Belum ada produk untuk toko ini. Klik "+ Tambah Produk Baru" untuk menambahkan produk.
+                </td>
+              </tr>
+            ` : displayProducts.map(p => {
               const cat = state.categories.find(c => c.id === p.category_id);
               return `
                 <tr>
@@ -669,6 +728,11 @@ function renderProductsView() {
                     <img src="${p.image_path || '/poshere_logo.png'}" style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover;" onerror="this.src='/poshere_logo.png'"/>
                   </td>
                   <td style="font-weight: 600; color: var(--text-main);">${p.name}</td>
+                  ${isSuperAdmin ? `
+                    <td>
+                      <span class="badge-tenant">${getTenantName(p.tenant_id)}</span>
+                    </td>
+                  ` : ''}
                   <td>${cat ? cat.name : '-'}</td>
                   <td style="font-weight: 700; color: var(--primary-focus);">${formatRupiah(p.price)}</td>
                   <td>${formatRupiah(p.cost_price)}</td>
@@ -697,6 +761,11 @@ function renderProductsView() {
 
 // 2b. Master Categories View
 function renderCategoriesView() {
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
+  const displayCategories = (state.activeTenantId && state.activeTenantId !== 'all')
+    ? state.categories.filter(c => c.tenant_id === state.activeTenantId)
+    : state.categories;
+
   return `
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -704,6 +773,7 @@ function renderCategoriesView() {
           <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Kategori Menu</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
             Kelola kategori menu dan produk toko (Espresso, Minuman, Makanan, Snack, dll)
+            ${state.activeTenantId !== 'all' ? ` • <strong style="color: #2563eb;">${getTenantName(state.activeTenantId)}</strong>` : ' • <strong>Semua Toko</strong>'}
           </p>
         </div>
         <button class="btn btn-primary btn-icon-text" onclick="window.openCategoryForm()">
@@ -717,19 +787,20 @@ function renderCategoriesView() {
             <tr>
               <th style="width: 50px;">Icon</th>
               <th>Nama Kategori</th>
+              ${isSuperAdmin ? '<th>Toko / Tenant</th>' : ''}
               <th>Kode / ID</th>
               <th>Jumlah Produk Terkait</th>
               <th style="width: 140px; text-align: right;">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            ${state.categories.length === 0 ? `
+            ${displayCategories.length === 0 ? `
               <tr>
-                <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                  Belum ada kategori. Klik "+ Tambah Kategori Baru" untuk membuat kategori pertama Anda.
+                <td colspan="${isSuperAdmin ? 6 : 5}" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                  Belum ada kategori untuk toko ini. Klik "+ Tambah Kategori Baru" untuk membuat kategori pertama Anda.
                 </td>
               </tr>
-            ` : state.categories.map(c => {
+            ` : displayCategories.map(c => {
               const productCount = (state.products || []).filter(p => p.category_id === c.id).length;
               return `
                 <tr>
@@ -739,6 +810,11 @@ function renderCategoriesView() {
                     </div>
                   </td>
                   <td style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">${c.name}</td>
+                  ${isSuperAdmin ? `
+                    <td>
+                      <span class="badge-tenant">${getTenantName(c.tenant_id)}</span>
+                    </td>
+                  ` : ''}
                   <td><code>${c.id}</code></td>
                   <td>
                     <span class="stock-tag" style="background: #f1f5f9; color: var(--text-main); font-weight: 600;">
@@ -763,6 +839,11 @@ function renderCategoriesView() {
 
 // 3. Master Payment Methods & QRIS
 function renderPaymentsView() {
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
+  const displayPayments = (state.activeTenantId && state.activeTenantId !== 'all')
+    ? (state.paymentMethods || []).filter(p => p.tenant_id === state.activeTenantId)
+    : (state.paymentMethods || []);
+
   return `
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -770,6 +851,7 @@ function renderPaymentsView() {
           <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Metode Pembayaran & QRIS</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
             Kelola metode pembayaran kasir, rekening penerima, dan generate QRIS dinamis otomatis
+            ${state.activeTenantId !== 'all' ? ` • <strong style="color: #2563eb;">${getTenantName(state.activeTenantId)}</strong>` : ' • <strong>Semua Toko</strong>'}
           </p>
         </div>
         <button class="btn btn-primary" onclick="window.openPaymentForm()">
@@ -782,6 +864,7 @@ function renderPaymentsView() {
           <thead>
             <tr>
               <th>Metode</th>
+              ${isSuperAdmin ? '<th>Toko / Tenant</th>' : ''}
               <th>Tipe</th>
               <th>Info Rekening / NMID</th>
               <th>Gambar QR</th>
@@ -791,9 +874,20 @@ function renderPaymentsView() {
             </tr>
           </thead>
           <tbody>
-            ${state.paymentMethods.map(pay => `
+            ${displayPayments.length === 0 ? `
+              <tr>
+                <td colspan="${isSuperAdmin ? 8 : 7}" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                  Belum ada metode pembayaran untuk toko ini. Klik "+ Tambah Metode Bayar".
+                </td>
+              </tr>
+            ` : displayPayments.map(pay => `
               <tr>
                 <td style="font-weight: 700; color: var(--text-main);">${pay.name}</td>
+                ${isSuperAdmin ? `
+                  <td>
+                    <span class="badge-tenant">${getTenantName(pay.tenant_id)}</span>
+                  </td>
+                ` : ''}
                 <td><span class="role-badge ${pay.type === 'qris' ? 'badge-owner' : 'badge-kasir'}">${pay.type.toUpperCase()}</span></td>
                 <td>${pay.account_info || '-'}</td>
                 <td>
@@ -832,6 +926,11 @@ function renderPaymentsView() {
 
 // 3.5. Master Cash Registers (Mesin Kasir / POS Station)
 function renderRegistersView() {
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
+  const displayRegisters = (state.activeTenantId && state.activeTenantId !== 'all')
+    ? (state.cashRegisters || []).filter(r => r.tenant_id === state.activeTenantId)
+    : (state.cashRegisters || []);
+
   return `
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -839,6 +938,7 @@ function renderRegistersView() {
           <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Mesin Kasir & POS Station</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
             Konfigurasi stasiun mesin kasir di outlet/toko, kode mesin (POS-01), stasiun printer, dan lokasi counter
+            ${state.activeTenantId !== 'all' ? ` • <strong style="color: #2563eb;">${getTenantName(state.activeTenantId)}</strong>` : ' • <strong>Semua Toko</strong>'}
           </p>
         </div>
         <button class="btn btn-primary" onclick="window.openRegisterForm()">
@@ -852,6 +952,7 @@ function renderRegistersView() {
             <tr>
               <th>Kode Mesin</th>
               <th>Nama Stasiun Kasir</th>
+              ${isSuperAdmin ? '<th>Toko / Tenant</th>' : ''}
               <th>Tipe Printer Default</th>
               <th>Lebar Kertas</th>
               <th>Lokasi Counter</th>
@@ -860,10 +961,21 @@ function renderRegistersView() {
             </tr>
           </thead>
           <tbody>
-            ${(state.cashRegisters || []).map(r => `
+            ${displayRegisters.length === 0 ? `
+              <tr>
+                <td colspan="${isSuperAdmin ? 8 : 7}" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                  Belum ada mesin kasir untuk toko ini. Klik "+ Tambah Mesin Kasir Baru".
+                </td>
+              </tr>
+            ` : displayRegisters.map(r => `
               <tr>
                 <td style="font-weight: 700; color: var(--primary-focus);"><code>${r.device_code}</code></td>
                 <td style="font-weight: 600; color: var(--text-main);">${r.name}</td>
+                ${isSuperAdmin ? `
+                  <td>
+                    <span class="badge-tenant">${getTenantName(r.tenant_id)}</span>
+                  </td>
+                ` : ''}
                 <td><span class="role-badge badge-owner">${r.printer_type ? r.printer_type.toUpperCase() : 'BLUETOOTH'}</span></td>
                 <td><span class="stock-tag">${r.paper_width || 58} mm</span></td>
                 <td>${r.location || 'Counter'}</td>
@@ -889,12 +1001,20 @@ function renderRegistersView() {
 
 // 4. Master Users View
 function renderUsersView() {
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
+  const displayUsers = (state.activeTenantId && state.activeTenantId !== 'all')
+    ? (state.users || []).filter(u => u.tenant_id === state.activeTenantId || u.role === 'super_admin')
+    : (state.users || []);
+
   return `
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
           <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Pengguna & Staf Kasir</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted);">Kelola akun pengguna, hak akses role (Kasir, Manager, Owner), dan PIN login</p>
+          <p style="font-size: 0.78rem; color: var(--text-muted);">
+            Kelola akun pengguna, hak akses role (Kasir, Manager, Owner), dan PIN login
+            ${state.activeTenantId !== 'all' ? ` • <strong style="color: #2563eb;">${getTenantName(state.activeTenantId)}</strong>` : ' • <strong>Semua Toko</strong>'}
+          </p>
         </div>
         <button class="btn btn-primary" onclick="window.openUserForm()">
           + Tambah User Baru
@@ -907,6 +1027,7 @@ function renderUsersView() {
             <tr>
               <th>Nama Lengkap</th>
               <th>Username</th>
+              ${isSuperAdmin ? '<th>Toko / Tenant</th>' : ''}
               <th>Role</th>
               <th>PIN Akses</th>
               <th>Status</th>
@@ -915,10 +1036,21 @@ function renderUsersView() {
             </tr>
           </thead>
           <tbody>
-            ${state.users.map(u => `
+            ${displayUsers.length === 0 ? `
+              <tr>
+                <td colspan="${isSuperAdmin ? 8 : 7}" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                  Belum ada user untuk toko ini. Klik "+ Tambah User Baru".
+                </td>
+              </tr>
+            ` : displayUsers.map(u => `
               <tr>
                 <td style="font-weight: 600; color: var(--text-main);">${u.name}</td>
                 <td><code>@${u.username}</code></td>
+                ${isSuperAdmin ? `
+                  <td>
+                    <span class="badge-tenant">${getTenantName(u.tenant_id)}</span>
+                  </td>
+                ` : ''}
                 <td>
                   <span class="role-badge badge-${(u.role || 'kasir').replace('_', '')}">
                     ${(u.role || 'kasir').toUpperCase()}
@@ -950,12 +1082,20 @@ function renderUsersView() {
 
 // 5. Transactions History View
 function renderTransactionsView() {
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
+  const displayTransactions = (state.activeTenantId && state.activeTenantId !== 'all')
+    ? (state.transactions || []).filter(t => t.tenant_id === state.activeTenantId)
+    : (state.transactions || []);
+
   return `
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
           <h2 style="font-size: 1.1rem; font-weight: 700;">Riwayat Transaksi Penjualan</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted);">Seluruh transaksi penjualan kasir tersimpan aman dan terenkripsi di server database cloud</p>
+          <p style="font-size: 0.78rem; color: var(--text-muted);">
+            Seluruh transaksi penjualan kasir tersimpan aman dan terenkripsi di server database cloud
+            ${state.activeTenantId !== 'all' ? ` • <strong style="color: #2563eb;">${getTenantName(state.activeTenantId)}</strong>` : ' • <strong>Semua Toko</strong>'}
+          </p>
         </div>
       </div>
 
@@ -965,6 +1105,7 @@ function renderTransactionsView() {
             <tr>
               <th>Invoice</th>
               <th>Waktu</th>
+              ${isSuperAdmin ? '<th>Toko / Tenant</th>' : ''}
               <th>Status</th>
               <th>Kasir</th>
               <th>Pelanggan</th>
@@ -975,19 +1116,24 @@ function renderTransactionsView() {
             </tr>
           </thead>
           <tbody>
-            ${state.transactions.length === 0 ? `
+            ${displayTransactions.length === 0 ? `
               <tr>
-                <td colspan="9" style="text-align: center; padding: 2.5rem; color: #94a3b8;">
-                  Belum ada transaksi tersimpan.
+                <td colspan="${isSuperAdmin ? 10 : 9}" style="text-align: center; padding: 2.5rem; color: #94a3b8;">
+                  Belum ada transaksi tersimpan untuk toko ini.
                 </td>
               </tr>
-            ` : state.transactions.map(trx => `
+            ` : displayTransactions.map(trx => `
               <tr>
                 <td style="font-weight: 700; color: var(--primary-focus);"><code>${trx.invoice_number}</code></td>
                 <td style="font-size: 0.75rem;">${new Date(trx.created_at).toLocaleString('id-ID')}</td>
+                ${isSuperAdmin ? `
+                  <td>
+                    <span class="badge-tenant">${getTenantName(trx.tenant_id)}</span>
+                  </td>
+                ` : ''}
                 <td>
-                  <span class="role-badge ${trx.status === 'hold' ? 'badge-hold' : 'badge-kasir'}">
-                    ${trx.status === 'hold' ? 'HOLD' : 'SELESAI'}
+                  <span class="role-badge ${trx.status === 'hold' ? 'badge-hold' : (trx.status === 'cancelled' ? 'badge-owner' : 'badge-kasir')}">
+                    ${trx.status === 'hold' ? 'HOLD' : (trx.status === 'cancelled' ? 'BATAL' : 'SELESAI')}
                   </span>
                 </td>
                 <td>${trx.cashier_name}</td>
@@ -1039,8 +1185,11 @@ function renderTransactionsView() {
 
 // 6. Reports View (Comprehensive Business Intelligence for Owner)
 function renderReportsView() {
-  // Hanya hitung transaksi yang sudah selesai (bukan hold)
-  const trxs = (state.transactions || []).filter(t => t.status !== 'hold');
+  // Hanya hitung transaksi yang sudah selesai (bukan hold atau cancelled) dan sesuai tenant yang aktif
+  let trxs = (state.transactions || []).filter(t => t.status !== 'hold' && t.status !== 'cancelled');
+  if (state.activeTenantId && state.activeTenantId !== 'all') {
+    trxs = trxs.filter(t => t.tenant_id === state.activeTenantId);
+  }
   
   // Total Omset / Gross Sales
   const totalRevenue = trxs.reduce((sum, t) => sum + Number(t.grand_total || 0), 0);
@@ -1870,6 +2019,7 @@ function renderModal() {
 
   if (type === 'category_form') {
     const cat = data || {};
+    const isSuperAdmin = state.currentUser?.role === 'super_admin';
     return `
       <div class="modal-overlay">
         <div class="modal-content" style="max-width: 440px;">
@@ -1882,6 +2032,19 @@ function renderModal() {
           </div>
           <form onsubmit="window.saveCategoryForm(event, '${cat.id || ''}')">
             <div class="modal-body">
+              ${isSuperAdmin && state.tenants.length > 0 ? `
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                  <label class="form-label">Toko / Outlet Pemilik *</label>
+                  <select id="catform-tenant" class="form-control" required>
+                    ${state.tenants.map(t => `
+                      <option value="${t.id}" ${(cat.tenant_id === t.id || (!cat.tenant_id && state.activeTenantId === t.id)) ? 'selected' : ''}>
+                        🏪 ${t.name}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
+
               <div class="form-group">
                 <label class="form-label">Nama Kategori *</label>
                 <input type="text" id="catform-name" class="form-control" required value="${cat.name || ''}" placeholder="Misal: Coffee, Non-Coffee, Snack, Bakery, Retail"/>
@@ -1891,7 +2054,7 @@ function renderModal() {
                 <label class="form-label">Kode / ID Kategori (Opsional)</label>
                 <input type="text" id="catform-id" class="form-control" value="${cat.id || ''}" placeholder="Misal: cat_matcha, cat_snack (dibuat otomatis jika kosong)" ${cat.id ? 'disabled' : ''}/>
                 <small style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">
-                  ID unik kategori sebagai referensi di database Supabase.
+                  ID unik kategori sebagai referensi di database Neon Cloud.
                 </small>
               </div>
             </div>
@@ -1909,6 +2072,7 @@ function renderModal() {
 
   if (type === 'product_form') {
     const prod = data || {};
+    const isSuperAdmin = state.currentUser?.role === 'super_admin';
     return `
       <div class="modal-overlay">
         <div class="modal-content">
@@ -1918,6 +2082,19 @@ function renderModal() {
           </div>
           <form onsubmit="window.saveProductForm(event, '${prod.id || ''}')">
             <div class="modal-body">
+              ${isSuperAdmin && state.tenants.length > 0 ? `
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                  <label class="form-label">Toko / Outlet Pemilik *</label>
+                  <select id="pform-tenant" class="form-control" required>
+                    ${state.tenants.map(t => `
+                      <option value="${t.id}" ${(prod.tenant_id === t.id || (!prod.tenant_id && state.activeTenantId === t.id)) ? 'selected' : ''}>
+                        🏪 ${t.name}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
+
               <div class="form-group">
                 <label class="form-label">Nama Produk / Minuman *</label>
                 <input type="text" id="pform-name" class="form-control" required value="${prod.name || ''}" placeholder="Misal: Caramel Latte Ice"/>
@@ -1928,7 +2105,7 @@ function renderModal() {
                   <label class="form-label">Kategori *</label>
                   <select id="pform-cat" class="form-control">
                     ${state.categories.map(c => `
-                      <option value="${c.id}" ${prod.category_id === c.id ? 'selected' : ''}>${c.name}</option>
+                      <option value="${c.id}" ${prod.category_id === c.id ? 'selected' : ''}>${c.name} ${isSuperAdmin ? `(${getTenantName(c.tenant_id)})` : ''}</option>
                     `).join('')}
                   </select>
                 </div>
@@ -1975,6 +2152,7 @@ function renderModal() {
 
   if (type === 'payment_form') {
     const pay = data || {};
+    const isSuperAdmin = state.currentUser?.role === 'super_admin';
     return `
       <div class="modal-overlay">
         <div class="modal-content">
@@ -1984,6 +2162,19 @@ function renderModal() {
           </div>
           <form onsubmit="window.savePaymentForm(event, '${pay.id || ''}')">
             <div class="modal-body">
+              ${isSuperAdmin && state.tenants.length > 0 ? `
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                  <label class="form-label">Toko / Outlet Pemilik *</label>
+                  <select id="payform-tenant" class="form-control" required>
+                    ${state.tenants.map(t => `
+                      <option value="${t.id}" ${(pay.tenant_id === t.id || (!pay.tenant_id && state.activeTenantId === t.id)) ? 'selected' : ''}>
+                        🏪 ${t.name}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
+
               <div class="form-group">
                 <label class="form-label">Nama Metode Bayar *</label>
                 <input type="text" id="payform-name" class="form-control" required value="${pay.name || ''}" placeholder="Misal: QRIS BCA / ShopeePay"/>
@@ -2160,6 +2351,7 @@ function renderModal() {
   // Modal Register Form (Mesin Kasir / POS Station)
   if (type === 'register_form') {
     const reg = data || {};
+    const isSuperAdmin = state.currentUser?.role === 'super_admin';
     return `
       <div class="modal-overlay">
         <div class="modal-content">
@@ -2169,6 +2361,18 @@ function renderModal() {
           </div>
           <form onsubmit="window.saveRegisterForm(event, '${reg.id || ''}')">
             <div class="modal-body">
+              ${isSuperAdmin && state.tenants.length > 0 ? `
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                  <label class="form-label">Toko / Outlet Pemilik *</label>
+                  <select id="regform-tenant" class="form-control" required>
+                    ${state.tenants.map(t => `
+                      <option value="${t.id}" ${(reg.tenant_id === t.id || (!reg.tenant_id && state.activeTenantId === t.id)) ? 'selected' : ''}>
+                        🏪 ${t.name}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
               <div class="form-group">
                 <label class="form-label">Nama Stasiun Kasir *</label>
                 <input type="text" id="regform-name" class="form-control" required value="${reg.name || ''}" placeholder="Misal: Mesin Kasir Bar Utama"/>
@@ -2481,6 +2685,7 @@ window.processPaymentSubmit = async function() {
   }
 
   const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const targetTenantId = getTargetTenantId();
 
   const payload = {
     invoice_number: invoiceNumber,
@@ -2496,7 +2701,8 @@ window.processPaymentSubmit = async function() {
     paid_amount: paidAmount,
     change_amount: Math.max(0, paidAmount - grandTotal),
     qris_dynamic_string: dynamicQrisStringCache,
-    status: 'completed'
+    status: 'completed',
+    tenant_id: targetTenantId
   };
 
   try {
@@ -2512,6 +2718,9 @@ window.processPaymentSubmit = async function() {
     state.activeHoldTransactionId = null;
     state.cartCustomerName = '';
     state.cartTableNumber = '';
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     openModal('receipt', savedTrx || payload);
   } catch (err) {
@@ -2531,6 +2740,7 @@ window.saveHoldOrder = async function(event) {
   const tableNum = document.getElementById('hold-table-number').value || 'Meja 1';
   const note = document.getElementById('hold-note').value || '';
   const grandTotal = state.cart.reduce((s, it) => s + it.subtotal, 0);
+  const targetTenantId = getTargetTenantId();
 
   const payload = {
     cashier_user_id: state.currentUser.id,
@@ -2543,7 +2753,8 @@ window.saveHoldOrder = async function(event) {
     paid_amount: 0,
     change_amount: 0,
     note: note,
-    status: 'hold'
+    status: 'hold',
+    tenant_id: targetTenantId
   };
 
   try {
@@ -2560,6 +2771,9 @@ window.saveHoldOrder = async function(event) {
     state.cartCustomerName = '';
     state.cartTableNumber = '';
     closeModal();
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     renderApp();
   } catch (err) {
@@ -2647,6 +2861,9 @@ window.cancelCompletedTransaction = async function(trxId) {
       note: `DIBATALKAN: ${reason} (Oleh ${state.currentUser.name})`
     });
 
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     renderApp();
     alert(`Transaksi ${trx.invoice_number} berhasil DIBATALKAN dan stok barang telah dikembalikan!`);
@@ -2657,22 +2874,24 @@ window.cancelCompletedTransaction = async function(trxId) {
 
 
 // Neon Server PostgreSQL Cloud Sync Actions
-window.syncDataToNeonServer = async function() {
+window.syncDataToNeonServer = async function(isSilent = false) {
   try {
     const raw = localStorage.getItem('poshere_local_db');
     let localData = {};
     if (raw) {
-      localData = JSON.parse(raw);
-    } else {
-      localData = {
-        categories: state.categories,
-        products: state.products,
-        users: state.users,
-        payment_methods: state.paymentMethods,
-        cash_registers: state.cashRegisters,
-        transactions: state.transactions
-      };
+      try { localData = JSON.parse(raw); } catch (e) {}
     }
+
+    // Pastikan data terlengkap selalu tersinkron
+    localData.tenants = state.tenants || localData.tenants || [];
+    localData.roles = state.roles || localData.roles || [];
+    localData.categories = state.categories || localData.categories || [];
+    localData.products = state.products || localData.products || [];
+    localData.users = state.users || localData.users || [];
+    localData.payment_methods = state.paymentMethods || localData.payment_methods || [];
+    localData.cash_registers = state.cashRegisters || localData.cash_registers || [];
+    localData.transactions = state.transactions || localData.transactions || [];
+    localData.tenant_id = (state.activeTenantId && state.activeTenantId !== 'all') ? state.activeTenantId : null;
 
     const res = await fetch('/api/neon/sync', {
       method: 'POST',
@@ -2682,18 +2901,22 @@ window.syncDataToNeonServer = async function() {
 
     const result = await res.json();
     if (result.success) {
-      alert(`SUKSES SINKRONISASI KE NEON POSTGRESQL CLOUD!\n\n` +
-            `• ${result.synced.products} Produk\n` +
-            `• ${result.synced.categories} Kategori\n` +
-            `• ${result.synced.payment_methods} Metode Bayar\n` +
-            `• ${result.synced.users} User Kasir\n` +
-            `• ${result.synced.transactions} Transaksi\n\n` +
-            `Data telah tersimpan di Neon Cloud PostgreSQL Server!`);
-    } else {
+      if (!isSilent) {
+        alert(`SUKSES SINKRONISASI KE NEON POSTGRESQL CLOUD!\n\n` +
+              `• ${result.synced?.products || 0} Produk\n` +
+              `• ${result.synced?.categories || 0} Kategori\n` +
+              `• ${result.synced?.payment_methods || 0} Metode Bayar\n` +
+              `• ${result.synced?.users || 0} User Kasir\n` +
+              `• ${result.synced?.transactions || 0} Transaksi\n\n` +
+              `Data telah tersimpan di Neon Cloud PostgreSQL Server!`);
+      }
+    } else if (!isSilent) {
       alert('Gagal sync ke Neon Server: ' + (result.error || result.message));
     }
   } catch (err) {
-    alert('Error koneksi ke Neon Server: ' + err.message);
+    if (!isSilent) {
+      alert('Error koneksi ke Neon Server: ' + err.message);
+    }
   }
 };
 
@@ -2826,20 +3049,25 @@ window.saveCategoryForm = async function(event, id) {
   event.preventDefault();
   const name = document.getElementById('catform-name').value.trim();
   const customId = document.getElementById('catform-id') ? document.getElementById('catform-id').value.trim() : '';
+  const tenant_id = getTargetTenantId('catform-tenant');
 
   if (!name) return;
 
   if (id) {
-    await dbService.updateCategory(id, { name });
+    await dbService.updateCategory(id, { name, tenant_id });
   } else {
     const payload = {
       name,
+      tenant_id,
       id: customId || `cat_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`
     };
     await dbService.createCategory(payload);
   }
 
   closeModal();
+  if (window.syncDataToNeonServer) {
+    await window.syncDataToNeonServer(true);
+  }
   await loadAllData();
   renderApp();
 };
@@ -2857,6 +3085,9 @@ window.editProduct = function(id) {
 window.deleteProduct = async function(id) {
   if (confirm('Yakin ingin menghapus produk ini?')) {
     await dbService.deleteProduct(id);
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     renderApp();
   }
@@ -2884,8 +3115,9 @@ window.saveProductForm = async function(event, id) {
   const cost_price = document.getElementById('pform-cost').value;
   const stock = document.getElementById('pform-stock').value;
   const image_path = document.getElementById('pform-image-path').value;
+  const tenant_id = getTargetTenantId('pform-tenant');
 
-  const payload = { name, category_id, sku, price, cost_price, stock, image_path };
+  const payload = { name, category_id, sku, price, cost_price, stock, image_path, tenant_id };
 
   if (id) {
     await dbService.updateProduct(id, payload);
@@ -2894,6 +3126,9 @@ window.saveProductForm = async function(event, id) {
   }
 
   closeModal();
+  if (window.syncDataToNeonServer) {
+    await window.syncDataToNeonServer(true);
+  }
   await loadAllData();
   renderApp();
 };
@@ -2911,6 +3146,9 @@ window.editPayment = function(id) {
 window.deletePayment = async function(id) {
   if (confirm('Yakin ingin menghapus metode pembayaran ini?')) {
     await dbService.deletePaymentMethod(id);
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     renderApp();
   }
@@ -2955,8 +3193,9 @@ window.savePaymentForm = async function(event, id) {
   const account_info = document.getElementById('payform-info').value;
   const image_path = document.getElementById('payform-image-path').value;
   const qris_raw_string = document.getElementById('payform-qris-string').value;
+  const tenant_id = getTargetTenantId('payform-tenant');
 
-  const payload = { name, type, account_info, image_path, qris_raw_string };
+  const payload = { name, type, account_info, image_path, qris_raw_string, tenant_id };
 
   if (id) {
     await dbService.updatePaymentMethod(id, payload);
@@ -2965,6 +3204,9 @@ window.savePaymentForm = async function(event, id) {
   }
 
   closeModal();
+  if (window.syncDataToNeonServer) {
+    await window.syncDataToNeonServer(true);
+  }
   await loadAllData();
   renderApp();
 };
@@ -2982,6 +3224,9 @@ window.editUser = function(id) {
 window.deleteUser = async function(id) {
   if (confirm('Yakin ingin menghapus user ini?')) {
     await dbService.deleteUser(id);
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     renderApp();
   }
@@ -2993,8 +3238,7 @@ window.saveUserForm = async function(event, id) {
   const username = document.getElementById('uform-username').value;
   const role = document.getElementById('uform-role').value;
   const pin = document.getElementById('uform-pin').value;
-  const tenantEl = document.getElementById('uform-tenant');
-  const tenant_id = tenantEl ? (tenantEl.value || null) : (state.activeTenantId !== 'all' ? state.activeTenantId : null);
+  const tenant_id = (role === 'super_admin') ? null : getTargetTenantId('uform-tenant');
   const email = `${username}@poshere.com`;
 
   const payload = { name, username, role, pin, tenant_id, email, password: pin };
@@ -3005,24 +3249,10 @@ window.saveUserForm = async function(event, id) {
     await dbService.createUser(payload);
   }
 
-  // Sync to Neon Cloud
-  try {
-    const existingIdx = state.users.findIndex(u => u.id === id);
-    if (existingIdx >= 0) {
-      state.users[existingIdx] = { ...state.users[existingIdx], ...payload };
-    } else {
-      state.users.push({ id: `usr_${Date.now()}`, ...payload });
-    }
-    await fetch('/api/neon/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ users: state.users, tenant_id })
-    });
-  } catch (e) {
-    console.warn('Neon sync user warning:', e);
-  }
-
   closeModal();
+  if (window.syncDataToNeonServer) {
+    await window.syncDataToNeonServer(true);
+  }
   await loadAllData();
   renderApp();
 };
@@ -3183,6 +3413,9 @@ window.editRegister = function(id) {
 window.deleteRegister = async function(id) {
   if (confirm('Yakin ingin menghapus stasiun mesin kasir ini?')) {
     await dbService.deleteCashRegister(id);
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
     await loadAllData();
     renderApp();
   }
@@ -3195,8 +3428,9 @@ window.saveRegisterForm = async function(event, id) {
   const location = document.getElementById('regform-loc').value;
   const printer_type = document.getElementById('regform-printer-type').value;
   const paper_width = document.getElementById('regform-paper').value;
+  const tenant_id = getTargetTenantId('regform-tenant');
 
-  const payload = { name, device_code, location, printer_type, paper_width };
+  const payload = { name, device_code, location, printer_type, paper_width, tenant_id };
 
   if (id) {
     await dbService.updateCashRegister(id, payload);
@@ -3205,6 +3439,9 @@ window.saveRegisterForm = async function(event, id) {
   }
 
   closeModal();
+  if (window.syncDataToNeonServer) {
+    await window.syncDataToNeonServer(true);
+  }
   await loadAllData();
   renderApp();
 };
@@ -3562,14 +3799,19 @@ window.handleEmailLoginSubmit = async function(event) {
       state.auth.errorMessage = '';
       state.currentUser = data.user;
 
+      if (data.user.role !== 'super_admin' && data.user.tenant_id) {
+        state.activeTenantId = data.user.tenant_id;
+        localStorage.setItem('poshere_active_tenant_id', data.user.tenant_id);
+      }
+
       await loadAllData();
       renderApp();
     } else {
       // Local fallback jika server offline / DB unreachable
       const defaultUsers = [
         { id: 'usr_superadmin', username: 'superadmin', name: 'Super Administrator', role: 'super_admin', pin: '1234', password: 'admin123', email: 'superadmin@poshere.com', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer', 'tenants', 'roles', 'settings'] },
-        { id: 'usr_1', username: 'owner', name: 'Pemilik Toko (Owner)', role: 'owner', pin: '1234', password: '1234', email: 'owner@poshere.com', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer'] },
-        { id: 'usr_2', username: 'kasir1', name: 'Kasir Utama', role: 'kasir', pin: '1111', password: '1111', email: 'kasir1@poshere.com', permissions: ['pos', 'transactions', 'printer'] }
+        { id: 'usr_1', username: 'owner', name: 'Pemilik Toko (Owner)', role: 'owner', pin: '1234', password: '1234', email: 'owner@poshere.com', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer'], tenant_id: 'tenant_main', tenant_name: 'POShere Flagship Store' },
+        { id: 'usr_2', username: 'kasir1', name: 'Kasir Utama', role: 'kasir', pin: '1111', password: '1111', email: 'kasir1@poshere.com', permissions: ['pos', 'transactions', 'printer'], tenant_id: 'tenant_main', tenant_name: 'POShere Flagship Store' }
       ];
       const candidateUsers = (state.users && state.users.length) ? state.users : defaultUsers;
 
@@ -3602,6 +3844,13 @@ window.handleEmailLoginSubmit = async function(event) {
           permissions: foundUser.permissions || ['pos', 'transactions', 'printer']
         };
         localStorage.setItem('poshere_jwt_user', JSON.stringify(state.currentUser));
+
+        if (state.currentUser.role !== 'super_admin' && state.currentUser.tenant_id) {
+          state.activeTenantId = state.currentUser.tenant_id;
+          localStorage.setItem('poshere_active_tenant_id', state.currentUser.tenant_id);
+        }
+
+        await loadAllData();
         renderApp();
       } else {
         state.auth.loading = false;
@@ -3711,8 +3960,6 @@ function renderApp() {
 }
 
 async function init() {
-  await loadAllData();
-
   // Verifikasi JWT Token jika ada tersimpan
   const savedToken = localStorage.getItem('poshere_jwt_token');
   const savedUser = localStorage.getItem('poshere_jwt_user');
@@ -3745,6 +3992,13 @@ async function init() {
     state.auth.isAuthenticated = false;
   }
 
+  // Jika user bukan super admin, pastikan activeTenantId terkunci ke tenant_id mereka
+  if (state.currentUser && state.currentUser.role !== 'super_admin' && state.currentUser.tenant_id) {
+    state.activeTenantId = state.currentUser.tenant_id;
+    localStorage.setItem('poshere_active_tenant_id', state.currentUser.tenant_id);
+  }
+
+  await loadAllData();
   renderApp();
 }
 

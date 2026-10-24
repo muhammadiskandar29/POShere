@@ -1529,6 +1529,21 @@ body {
   border-radius: 99px;
 }
 
+.badge-tenant {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .pos-btn-clean-submit {
   width: 100%;
   height: 46px;
