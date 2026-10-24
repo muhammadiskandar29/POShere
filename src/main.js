@@ -1128,7 +1128,14 @@ function renderUsersView() {
                     </div>
                   </div>
                 </td>
-                <td><code>@${u.username}</code></td>
+                <td>
+                  <div style="font-weight: 700; color: var(--text-main);"><code>@${u.username}</code></div>
+                  ${u.telegram_username ? `
+                    <div style="font-size: 0.7rem; color: #0284c7; margin-top: 3px; display: inline-flex; align-items: center; gap: 3px; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+                      <span>✈️ @${u.telegram_username}</span>
+                    </div>
+                  ` : ''}
+                </td>
                 <td style="font-size: 0.78rem; color: var(--text-secondary);">${u.email || `${u.username}@poshere.com`}</td>
                 <td>
                   <span class="badge-tenant">${getTenantName(u.tenant_id)}</span>
@@ -2469,6 +2476,21 @@ function renderModal() {
                 </small>
               </div>
 
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                <div class="form-group">
+                  <label class="form-label">Username Telegram (@) *</label>
+                  <input type="text" id="uform-telegram" class="form-control" required value="${user.telegram_username ? (user.telegram_username.startsWith('@') ? user.telegram_username : '@' + user.telegram_username) : ''}" placeholder="@nama_telegram"/>
+                  <small style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; display: block;">
+                    Untuk otorisasi bot POShere.
+                  </small>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Nomor HP / WhatsApp *</label>
+                  <input type="tel" id="uform-phone" class="form-control" required value="${user.phone || ''}" placeholder="08xxxxxxxxxx"/>
+                </div>
+              </div>
+
               <div class="form-group">
                 <label class="form-label">Alamat Email (Opsional)</label>
                 <input type="email" id="uform-email" class="form-control" value="${user.email || ''}" placeholder="nama@email.com (opsional)"/>
@@ -3755,6 +3777,10 @@ window.saveUserForm = async function(event, id) {
   const tenant_id = (role === 'super_admin') ? null : getTargetTenantId('uform-tenant');
   const emailEl = document.getElementById('uform-email');
   const email = emailEl ? emailEl.value.trim() : '';
+  const teleEl = document.getElementById('uform-telegram');
+  const telegram_username = teleEl ? teleEl.value.trim().replace(/^@/, '') : '';
+  const phoneEl = document.getElementById('uform-phone');
+  const phone = phoneEl ? phoneEl.value.trim() : '';
   const status = document.getElementById('uform-status') ? document.getElementById('uform-status').value : 'active';
 
   if (!username) {
@@ -3774,7 +3800,7 @@ window.saveUserForm = async function(event, id) {
   }
 
   const userId = id || `usr_${Date.now()}`;
-  const payload = { id: userId, name, username, role, pin, tenant_id, email, password: pin, status };
+  const payload = { id: userId, name, username, role, pin, tenant_id, email, password: pin, status, telegram_username, phone };
 
   await saveToNeonServer('users', payload);
 

@@ -112,12 +112,14 @@ export default async function handler(req, res) {
       `;
     } else if (entity === 'users') {
       const userTenant = (data.role === 'super_admin') ? null : (data.tenant_id || tenantId);
+      const cleanTele = data.telegram_username ? data.telegram_username.replace(/^@/, '').toLowerCase().trim() : '';
       await sql`
-        INSERT INTO users (id, username, name, role, pin, status, email, password, tenant_id)
+        INSERT INTO users (id, username, name, role, pin, status, email, password, tenant_id, phone, telegram_username)
         VALUES (
           ${data.id}, ${data.username}, ${data.name}, ${data.role || 'kasir'},
           ${data.pin || '1234'}, ${data.status || 'active'}, ${data.email || ''},
-          ${data.password || data.pin || '1234'}, ${userTenant}
+          ${data.password || data.pin || '1234'}, ${userTenant},
+          ${data.phone || ''}, ${cleanTele}
         )
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
@@ -127,7 +129,9 @@ export default async function handler(req, res) {
           status = EXCLUDED.status,
           email = EXCLUDED.email,
           password = EXCLUDED.password,
-          tenant_id = EXCLUDED.tenant_id;
+          tenant_id = EXCLUDED.tenant_id,
+          phone = EXCLUDED.phone,
+          telegram_username = EXCLUDED.telegram_username;
       `;
     } else if (entity === 'payment_methods') {
       await sql`

@@ -171,13 +171,15 @@ export default async function handler(req, res) {
 
     // 3. Users
     for (const u of users) {
+      const cleanTele = u.telegram_username ? u.telegram_username.replace(/^@/, '').toLowerCase().trim() : '';
       try {
         await sql`
-          INSERT INTO users (id, username, name, role, pin, status, email, password, tenant_id)
+          INSERT INTO users (id, username, name, role, pin, status, email, password, tenant_id, phone, telegram_username)
           VALUES (
             ${u.id}, ${u.username}, ${u.name}, ${u.role || 'kasir'}, 
             ${u.pin || '1234'}, ${u.status || 'active'}, ${u.email || ''}, 
-            ${u.password || u.pin || '1234'}, ${u.tenant_id || (u.role === 'super_admin' ? null : activeTenantId)}
+            ${u.password || u.pin || '1234'}, ${u.tenant_id || (u.role === 'super_admin' ? null : activeTenantId)},
+            ${u.phone || ''}, ${cleanTele}
           )
           ON CONFLICT (id) DO UPDATE SET
             username = EXCLUDED.username,
@@ -187,7 +189,9 @@ export default async function handler(req, res) {
             status = EXCLUDED.status,
             email = EXCLUDED.email,
             password = EXCLUDED.password,
-            tenant_id = EXCLUDED.tenant_id;
+            tenant_id = EXCLUDED.tenant_id,
+            phone = EXCLUDED.phone,
+            telegram_username = EXCLUDED.telegram_username;
         `;
       } catch (errUser) {
         console.warn('Sync user error for ' + u.username, errUser.message);
