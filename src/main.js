@@ -2340,8 +2340,8 @@ function renderModal() {
                   </p>
                   <input type="file" id="payform-file" class="form-control" accept="image/*" onchange="window.handleQrisImageUpload(this)"/>
                   <input type="hidden" id="payform-image-path" value="${pay.image_path || ''}"/>
-                  <div id="pform-preview" style="margin-top: 0.5rem;">
-                    ${pay.image_path ? `<img src="${pay.image_path}" style="width: 80px; height: 80px; border-radius: 8px; object-fit: contain;"/>` : ''}
+                  <div id="payform-preview" style="margin-top: 0.5rem;">
+                    ${pay.image_path ? `<img src="${pay.image_path}" style="width: 80px; height: 80px; border-radius: 8px; object-fit: contain; border: 1px solid var(--border-light); background: #ffffff;"/>` : ''}
                   </div>
                 </div>
 
@@ -3398,9 +3398,18 @@ window.handleProductImageUpload = async function(input) {
   if (!file) return;
   try {
     const base64 = await fileToBase64(file);
-    const uploadedPath = await uploadBase64Image(base64, file.name);
-    document.getElementById('pform-image-path').value = uploadedPath;
-    document.getElementById('pform-preview').innerHTML = `<img src="${uploadedPath}" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover;"/>`;
+    let uploadedPath = base64;
+    try {
+      uploadedPath = await uploadBase64Image(base64, file.name || 'product.png');
+    } catch (upErr) {
+      console.warn('Upload image API failed, fallback to base64:', upErr);
+    }
+    const pathEl = document.getElementById('pform-image-path');
+    if (pathEl) pathEl.value = uploadedPath;
+    const prevEl = document.getElementById('pform-preview');
+    if (prevEl) {
+      prevEl.innerHTML = `<img src="${uploadedPath}" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border-light);"/>`;
+    }
     showToast('Gambar produk berhasil diunggah!', 'success');
   } catch (err) {
     await showAlertDialog({
@@ -3484,30 +3493,63 @@ window.handleQrisImageUpload = async function(input) {
   const file = input.files[0];
   if (!file) return;
   try {
+    showToast('Memproses gambar & mendeteksi kode QRIS...', 'info');
     const base64 = await fileToBase64(file);
-    const uploadedPath = await uploadBase64Image(base64, file.name);
-    document.getElementById('payform-image-path').value = uploadedPath;
-    document.getElementById('payform-preview').innerHTML = `<img src="${uploadedPath}" style="width: 80px; height: 80px; border-radius: 8px; object-fit: contain;"/>`;
+    
+    // Simpan gambar (ke server atau fallback langsung ke base64)
+    let uploadedPath = base64;
+    try {
+      uploadedPath = await uploadBase64Image(base64, file.name || 'qris_merchant.png');
+    } catch (upErr) {
+      console.warn('Upload image API error, using base64 fallback:', upErr);
+    }
 
-    const qrString = await readQrCodeFromImage(base64);
+    const pathEl = document.getElementById('payform-image-path');
+    if (pathEl) pathEl.value = uploadedPath;
+
+    const previewEl = document.getElementById('payform-preview') || document.getElementById('pform-preview');
+    if (previewEl) {
+      previewEl.innerHTML = `<img src="${uploadedPath}" style="width: 80px; height: 80px; border-radius: 8px; object-fit: contain; border: 1px solid var(--border-light); background: #ffffff;"/>`;
+    }
+
+    // Deteksi kode QR menggunakan pipeline multi-layer (BarcodeDetector, ZXing, jsQR, multi-scale & sharpen filters)
+    const qrString = await readQrCodeFromImage(file);
     if (qrString) {
-      document.getElementById('payform-qris-string').value = qrString;
+      const qrisInputEl = document.getElementById('payform-qris-string');
+      if (qrisInputEl) qrisInputEl.value = qrString;
+
       const parsed = parseQris(qrString);
-      if (parsed.merchantName) {
-        document.getElementById('payform-info').value = `Merchant: ${parsed.merchantName} (${parsed.merchantCity || 'ID'})`;
+      const infoEl = document.getElementById('payform-info');
+      if (infoEl) {
+        infoEl.value = `NMID: ${parsed.nmid || '-'} (${parsed.merchantName || 'QRIS'})`;
       }
+
+      // Isi nama metode jika masih kosong
+      const nameEl = document.getElementById('payform-name');
+      if (nameEl && (!nameEl.value || nameEl.value.trim() === '')) {
+        nameEl.value = `QRIS ${parsed.merchantName || 'Toko'}`;
+      }
+
       await showAlertDialog({
-        title: 'QRIS Berhasil Terbaca',
-        message: `String data QRIS berhasil dideteksi!\n\nMerchant: ${parsed.merchantName || 'Terdeteksi'}`,
+        title: 'QRIS Berhasil Terbaca!',
+        message: `Kode QRIS berhasil dideteksi secara otomatis dari gambar!\n\n` +
+                 `• Merchant : ${parsed.merchantName || 'Terdeteksi'}\n` +
+                 `• NMID     : ${parsed.nmid || 'Terdeteksi'}\n` +
+                 `• Kota     : ${parsed.merchantCity || 'Indonesia'}\n\n` +
+                 `Data QRIS statis telah diisikan ke formulir.`,
         type: 'success'
       });
     } else {
-      showToast('Gambar diunggah. Silakan input string QRIS jika diperlukan.', 'info');
+      await showAlertDialog({
+        title: 'Gambar Terunggah',
+        message: 'Gambar berhasil diunggah, namun kode QR belum terdeteksi secara otomatis.\n\nTips: Pastikan kotak QR code tidak terpotong, atau Anda dapat menempelkan (paste) string QRIS secara manual di kolom teks.',
+        type: 'warning'
+      });
     }
   } catch (err) {
     await showAlertDialog({
       title: 'Gagal Membaca QRIS',
-      message: err.message,
+      message: err.message || 'Terjadi kesalahan saat memproses gambar.',
       type: 'danger'
     });
   }
