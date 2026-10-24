@@ -2646,7 +2646,12 @@ window.toggleSidebar = function() {
 window.addToCart = addToCart;
 window.updateCartQty = updateCartQty;
 window.clearCart = clearCart;
-window.switchRole = switchRole;
+window.switchRole = function(role) {
+  if (state.currentUser) {
+    state.currentUser.role = role;
+    renderApp();
+  }
+};
 window.closeModal = closeModal;
 
 // Flow Baru:
