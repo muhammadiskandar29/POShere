@@ -335,21 +335,26 @@ function renderTopbar() {
     settings: 'Pengaturan Database Server (Neon & MySQL)'
   };
 
+  const activeReg = state.activeRegister ? `${state.activeRegister.name} • ${state.activeRegister.device_code}` : 'POS-01 • Bar Utama';
+
   return `
     <header class="topbar">
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <button class="mobile-menu-btn" onclick="window.toggleSidebar()">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+      <div class="topbar-left">
+        <button class="mobile-menu-btn" onclick="window.toggleSidebar()" title="Buka Navigasi">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
         </button>
-        <span class="page-title">${titles[state.currentView] || 'POShere'}</span>
+        <div class="topbar-title-block">
+          <h2 class="page-title">${titles[state.currentView] || 'POShere'}</h2>
+          <span class="topbar-sub">${activeReg}</span>
+        </div>
       </div>
 
       <div class="topbar-right">
-        <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.45rem; background: #eff6ff; color: #1d4ed8; padding: 0.3rem 0.75rem; border-radius: 99px; border: 1px solid #bfdbfe;">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 6px #2563eb; display: inline-block;"></span>
-          <span style="font-weight: 700;">Neon Cloud Server</span>
+        <div class="topbar-chip cloud-chip" title="Terhubung langsung ke Neon PostgreSQL Cloud (AWS)">
+          <span class="pulse-indicator"></span>
+          <span>Neon Cloud Server</span>
         </div>
-        <div style="font-size: 0.78rem; display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.65rem; background: var(--primary-light); color: var(--primary-focus); border-radius: 99px; font-weight: 700; text-transform: uppercase;">
+        <div class="topbar-chip role-chip ${state.currentUser.role === 'owner' ? 'badge-owner' : 'badge-kasir'}">
           ${state.currentUser.role}
         </div>
       </div>
@@ -376,42 +381,68 @@ function renderPosView() {
   return `
     <div class="pos-container">
       <section class="catalog-section">
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
-          <input type="text" class="form-control" placeholder="Cari kopi, pastry, SKU..." 
-                 value="${state.searchQuery}" oninput="window.setSearch(this.value)">
+        <div class="catalog-search-wrap">
+          <div class="search-input-box">
+            <svg class="search-box-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" class="catalog-search-input" placeholder="Cari kopi, pastry, makanan, atau SKU..." 
+                   value="${state.searchQuery}" oninput="window.setSearch(this.value)">
+            ${state.searchQuery ? `
+              <button class="search-clear-btn" onclick="window.setSearch('')" title="Hapus Pencarian">&times;</button>
+            ` : ''}
+          </div>
+          <div class="catalog-stats-pill">
+            <span>${filteredProducts.length} Menu</span>
+          </div>
         </div>
 
         <div class="catalog-filter-bar">
           <button class="cat-chip ${state.selectedCategory === 'all' ? 'active' : ''}" 
                   onclick="window.setCategory('all')">
-            Semua Menu
+            <span>Semua Menu</span>
+            <span class="chip-badge">${state.products.filter(p => p.is_active).length}</span>
           </button>
-          ${state.categories.map(c => `
-            <button class="cat-chip ${state.selectedCategory === c.id ? 'active' : ''}" 
-                    onclick="window.setCategory('${c.id}')">
-              ${c.name}
-            </button>
-          `).join('')}
+          ${state.categories.map(c => {
+            const count = state.products.filter(p => p.is_active && p.category_id === c.id).length;
+            return `
+              <button class="cat-chip ${state.selectedCategory === c.id ? 'active' : ''}" 
+                      onclick="window.setCategory('${c.id}')">
+                <span>${c.name}</span>
+                <span class="chip-badge">${count}</span>
+              </button>
+            `;
+          }).join('')}
         </div>
 
         <div class="product-grid">
           ${filteredProducts.length === 0 ? `
-            <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: #94a3b8;">
-              <p>Tidak ada produk ditemukan di kategori ini.</p>
+            <div class="catalog-empty-state">
+              <div style="color: #cbd5e1; display: inline-flex; margin-bottom: 0.5rem;">${getIcon('search', 36)}</div>
+              <p style="font-weight: 700; color: var(--text-main);">Tidak ada produk ditemukan</p>
+              <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem;">Coba cari dengan kata kunci lain atau pilih kategori Semua Menu.</p>
             </div>
           ` : filteredProducts.map(p => `
-            <div class="product-card" onclick="window.addToCart(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+            <div class="product-card" onclick="window.addToCart(${JSON.stringify(p).replace(/"/g, '&quot;')})" title="Klik untuk menambah ke pesanan">
               <div class="product-img-wrap">
                 ${p.image_path ? `
-                  <img src="${p.image_path}" alt="${p.name}" onerror="this.onerror=null; this.src='/poshere_logo.png';"/>
+                  <img src="${p.image_path}" alt="${p.name}" loading="lazy" onerror="this.onerror=null; this.src='/poshere_logo.png';"/>
                 ` : `
-                  <span style="color: var(--primary); display: inline-flex;">${getIcon('package', 28)}</span>
+                  <div class="product-img-fallback">
+                    ${getIcon('package', 28)}
+                  </div>
                 `}
+                <span class="product-stock-badge ${p.stock <= 5 ? (p.stock <= 0 ? 'stock-empty' : 'stock-low') : 'stock-ok'}">
+                  ${p.stock <= 0 ? 'Habis' : `${p.stock} pcs`}
+                </span>
+                ${p.sku ? `<span class="product-sku-badge">${p.sku}</span>` : ''}
               </div>
-              <div class="product-name" title="${p.name}">${p.name}</div>
-              <div class="product-meta-row">
-                <span class="product-price">${formatRupiah(p.price)}</span>
-                <span class="stock-tag">Stok: ${p.stock}</span>
+              <div class="product-info-wrap">
+                <div class="product-name" title="${p.name}">${p.name}</div>
+                <div class="product-meta-row">
+                  <span class="product-price">${formatRupiah(p.price)}</span>
+                  <button class="product-add-btn" title="Tambah" onclick="event.stopPropagation(); window.addToCart(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
               </div>
             </div>
           `).join('')}
@@ -420,33 +451,36 @@ function renderPosView() {
 
       <section class="cart-panel">
         <div class="cart-header">
-          <div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <h3 style="font-size: 0.95rem; font-weight: 700;">Pesanan Saat Ini</h3>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <h3 style="font-size: 0.95rem; font-weight: 700; color: #1e1b4b;">Pesanan Saat Ini</h3>
+              ${state.cart.length > 0 ? `
+                <button class="btn-clear-cart" onclick="window.clearCart()" title="Kosongkan Keranjang">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span>Reset</span>
+                </button>
+              ` : ''}
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; flex-wrap: wrap;">
+              <span class="cart-badge-count">${totalQty} Item Dipilih</span>
               ${(() => {
                 const openBillsCount = (state.transactions || []).filter(t => t.status === 'hold').length;
                 return `
                   <button class="open-bills-btn" onclick="window.openHoldOrdersModal()" title="Lihat daftar pesanan yang di-hold">
-                    ${getIcon('clipboard-list', 14)} Open Bills (${openBillsCount})
+                    ${getIcon('clipboard-list', 13)} Open Bills (${openBillsCount})
                   </button>
                 `;
               })()}
             </div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">${totalQty} Item dipilih</span>
           </div>
-          ${state.cart.length > 0 ? `
-            <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="window.clearCart()">
-              Reset
-            </button>
-          ` : ''}
         </div>
 
         ${state.activeHoldTransactionId ? `
-          <div style="padding: 0 0.85rem; margin-top: 0.5rem;">
+          <div class="active-hold-container">
             <div class="active-hold-banner">
               <div style="display: flex; align-items: center; gap: 0.4rem;">
                 <span style="color: #b45309; display: inline-flex;">${getIcon('alert-triangle', 15)}</span>
-                <span><strong>Mengedit Open Bill:</strong> ${state.cartCustomerName || 'Pelanggan'} (${state.cartTableNumber || 'Meja'})</span>
+                <span><strong>Edit Open Bill:</strong> ${state.cartCustomerName || 'Pelanggan'} (${state.cartTableNumber || 'Meja'})</span>
               </div>
               <button class="btn btn-secondary" style="padding: 0.15rem 0.45rem; font-size: 0.68rem; background: white;" onclick="window.cancelEditingHoldOrder()">
                 Keluar
@@ -457,61 +491,70 @@ function renderPosView() {
 
         <div class="cart-items">
           ${state.cart.length === 0 ? `
-            <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
-              <div style="color: #cbd5e1; display: inline-flex; margin-bottom: 0.5rem;">${getIcon('inbox', 36)}</div>
-              <p style="font-size: 0.85rem; font-weight: 600;">Keranjang masih kosong</p>
-              <p style="font-size: 0.72rem; margin-top: 0.25rem;">Pilih produk di katalog untuk menambahkan ke pesanan.</p>
+            <div class="empty-cart-state">
+              <div class="empty-cart-icon-box">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.8"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+              </div>
+              <p class="empty-cart-title">Keranjang masih kosong</p>
+              <p class="empty-cart-desc">Pilih menu produk di sebelah kiri untuk menambahkan ke pesanan kasir.</p>
               ${(() => {
                 const openCount = (state.transactions || []).filter(t => t.status === 'hold').length;
                 return openCount > 0 ? `
-                  <button class="open-bills-btn" style="margin-top: 1rem; padding: 0.4rem 0.8rem;" onclick="window.openHoldOrdersModal()">
-                    ${getIcon('clipboard-list', 14)} Lihat ${openCount} Pesanan Di-Hold
+                  <button class="open-bills-btn" style="margin-top: 0.85rem; padding: 0.45rem 0.85rem;" onclick="window.openHoldOrdersModal()">
+                    ${getIcon('clipboard-list', 14)} Buka ${openCount} Open Bills
                   </button>
                 ` : '';
               })()}
             </div>
           ` : state.cart.map(item => `
             <div class="cart-item-row">
-              <div style="flex: 1; min-width: 0;">
-                <div class="cart-item-name">${item.name}</div>
-                <div class="cart-item-price">${formatRupiah(item.price)} x ${item.quantity} = <strong>${formatRupiah(item.subtotal)}</strong></div>
+              <div class="cart-item-info">
+                <div class="cart-item-name" title="${item.name}">${item.name}</div>
+                <div class="cart-item-price-calc">
+                  <span>${formatRupiah(item.price)}</span>
+                  <span class="calc-divider">&times;</span>
+                  <span class="calc-qty">${item.quantity}</span>
+                </div>
               </div>
+              <div class="cart-item-total">${formatRupiah(item.subtotal)}</div>
               <div class="cart-qty-ctrl">
-                <button class="qty-btn" onclick="window.updateCartQty('${item.product_id}', -1)">-</button>
+                <button class="qty-btn" onclick="window.updateCartQty('${item.product_id}', -1)" title="Kurang">-</button>
                 <span class="qty-val">${item.quantity}</span>
-                <button class="qty-btn" onclick="window.updateCartQty('${item.product_id}', 1)">+</button>
+                <button class="qty-btn" onclick="window.updateCartQty('${item.product_id}', 1)" title="Tambah">+</button>
               </div>
             </div>
           `).join('')}
         </div>
 
         <div class="cart-footer">
-          <div class="summary-row">
-            <span>Subtotal</span>
-            <span>${formatRupiah(subtotal)}</span>
-          </div>
-          <div class="summary-row total">
-            <span>Grand Total</span>
-            <span>${formatRupiah(subtotal)}</span>
+          <div class="cart-summary-box">
+            <div class="summary-row">
+              <span>Subtotal Pesanan</span>
+              <span style="font-weight: 600; color: #1e1b4b;">${formatRupiah(subtotal)}</span>
+            </div>
+            <div class="grand-total-card">
+              <span class="grand-total-label">Grand Total</span>
+              <span class="grand-total-amount">${formatRupiah(subtotal)}</span>
+            </div>
           </div>
 
-          <div style="display: flex; gap: 0.4rem; margin-top: 0.4rem;">
-            <button class="btn btn-hold-cart btn-icon-text" style="flex: 1; padding: 0.65rem; font-size: 0.82rem;" 
+          <div class="cart-actions-row">
+            <button class="btn btn-hold-cart btn-icon-text" 
                     ${state.cart.length === 0 ? 'disabled' : ''}
                     onclick="window.openHoldOrderForm()">
-              ${getIcon('pause', 14)} <span>${state.activeHoldTransactionId ? 'Perbarui Hold' : 'Hold / Open Bill'}</span>
+              ${getIcon('pause', 14)} <span>${state.activeHoldTransactionId ? 'Simpan Hold' : 'Hold / Open Bill'}</span>
             </button>
-            <button class="btn btn-primary" style="flex: 2; padding: 0.65rem; font-size: 0.85rem;" 
+            <button class="btn btn-primary btn-checkout" 
                     ${state.cart.length === 0 ? 'disabled' : ''}
                     onclick="window.startCheckout()">
-              Bayar / Checkout
+              <span>Bayar / Checkout</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>
 
           ${state.cart.length > 0 ? `
-            <button class="btn btn-secondary btn-icon-text" style="width: 100%; font-size: 0.78rem; padding: 0.4rem; justify-content: center;" 
-                    onclick="window.openCustomerDisplay()">
-              ${getIcon('monitor', 14)} <span>Tampilkan ke Layar Pelanggan</span>
+            <button class="btn btn-customer-display btn-icon-text" onclick="window.openCustomerDisplay()">
+              ${getIcon('monitor', 14)} <span>Layar Pelanggan (Dual Display)</span>
             </button>
           ` : ''}
         </div>
@@ -3188,6 +3231,9 @@ function renderApp() {
       viewContent = renderPosView();
   }
 
+  const subtotal = (state.cart || []).reduce((sum, it) => sum + it.subtotal, 0);
+  const totalQty = (state.cart || []).reduce((sum, it) => sum + it.quantity, 0);
+
   app.innerHTML = `
     ${renderSidebar()}
     <div class="main-wrapper">
@@ -3196,6 +3242,18 @@ function renderApp() {
         ${viewContent}
       </main>
     </div>
+    ${(state.currentView === 'pos' && state.cart.length > 0) ? `
+      <div class="mobile-sticky-cart-bar" onclick="document.querySelector('.cart-panel')?.scrollIntoView({ behavior: 'smooth' })">
+        <div class="m-cart-summary">
+          <span class="m-cart-badge">${totalQty} Item</span>
+          <span class="m-cart-total">${formatRupiah(subtotal)}</span>
+        </div>
+        <button class="m-cart-btn" onclick="event.stopPropagation(); window.startCheckout()">
+          <span>Lihat Pesanan & Bayar</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    ` : ''}
     ${renderModal()}
     ${renderCustomerDisplay()}
   `;
