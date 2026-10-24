@@ -179,7 +179,7 @@ export const dbService = {
     const newProd = {
       id: product.id || `prod_${Date.now()}`,
       name: product.name,
-      category_id: product.category_id || 'cat_coffee',
+      category_id: product.category_id || null,
       price: Number(product.price) || 0,
       cost_price: Number(product.cost_price) || 0,
       stock: Number(product.stock) || 0,

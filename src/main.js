@@ -104,6 +104,23 @@ const formatRupiah = (num) => {
   }).format(num || 0);
 };
 
+// Server Database Deletion Helper
+async function deleteFromNeonServer(entity, id) {
+  try {
+    const res = await fetch('/api/neon/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity, id })
+    });
+    const result = await res.json().catch(() => ({}));
+    return result.success;
+  } catch (err) {
+    console.warn(`Failed to call /api/neon/delete for ${entity} ${id}:`, err);
+    return false;
+  }
+}
+window.deleteFromNeonServer = deleteFromNeonServer;
+
 // Data Loader dari Neon PostgreSQL Server / Local Fallback
 async function loadAllData() {
   try {
@@ -596,7 +613,7 @@ function renderPosView() {
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; flex-wrap: wrap;">
               <span class="cart-badge-count">${totalQty} Item Dipilih</span>
               ${(() => {
-                const openBillsCount = (state.transactions || []).filter(t => t.status === 'hold').length;
+                const openBillsCount = (state.transactions || []).filter(t => t.status === 'hold' && t.tenant_id === state.activeTenantId).length;
                 return `
                   <button class="open-bills-btn" onclick="window.openHoldOrdersModal()" title="Lihat daftar pesanan yang di-hold">
                     ${getIcon('clipboard-list', 13)} Open Bills (${openBillsCount})
@@ -630,7 +647,7 @@ function renderPosView() {
               <p class="empty-cart-title">Keranjang masih kosong</p>
               <p class="empty-cart-desc">Pilih menu produk di sebelah kiri untuk menambahkan ke pesanan kasir.</p>
               ${(() => {
-                const openCount = (state.transactions || []).filter(t => t.status === 'hold').length;
+                const openCount = (state.transactions || []).filter(t => t.status === 'hold' && t.tenant_id === state.activeTenantId).length;
                 return openCount > 0 ? `
                   <button class="open-bills-btn" style="margin-top: 0.85rem; padding: 0.45rem 0.85rem;" onclick="window.openHoldOrdersModal()">
                     ${getIcon('clipboard-list', 14)} Buka ${openCount} Open Bills
@@ -1742,6 +1759,11 @@ function renderTenantsView() {
                       <button class="btn btn-sm btn-primary" title="Edit Toko" onclick="window.openTenantModal('${t.id}')" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">
                         <span>Edit</span>
                       </button>
+                      ${t.id !== 'tenant_main' ? `
+                        <button class="btn btn-sm" title="Hapus Toko & Data" onclick="window.deleteTenant('${t.id}')" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">
+                          <span>Hapus</span>
+                        </button>
+                      ` : ''}
                     </div>
                   </td>
                 </tr>
@@ -2237,8 +2259,9 @@ function renderModal() {
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
                 <div class="form-group">
-                  <label class="form-label">Kategori *</label>
-                  <select id="pform-cat" class="form-control" required>
+                  <label class="form-label">Kategori</label>
+                  <select id="pform-cat" class="form-control">
+                    <option value="">-- Tanpa Kategori / Umum --</option>
                     ${(state.categories || []).filter(c => c.tenant_id === (prod.tenant_id || state.activeTenantId)).map(c => `
                       <option value="${c.id}" ${prod.category_id === c.id ? 'selected' : ''}>${c.name}</option>
                     `).join('')}
@@ -2616,7 +2639,7 @@ function renderModal() {
 
   // MODAL LIST: Daftar Pesanan Di-Hold (Open Bills)
   if (type === 'hold_orders') {
-    const holdBills = (state.transactions || []).filter(t => t.status === 'hold');
+    const holdBills = (state.transactions || []).filter(t => t.status === 'hold' && t.tenant_id === state.activeTenantId);
 
     return `
       <div class="modal-overlay">
@@ -3010,6 +3033,7 @@ window.deleteHoldOrder = async function(holdId) {
     icon: 'trash'
   });
   if (confirmed) {
+    await deleteFromNeonServer('transactions', holdId);
     await dbService.deleteTransaction(holdId);
     if (state.activeHoldTransactionId === holdId) {
       state.cart = [];
@@ -3017,6 +3041,18 @@ window.deleteHoldOrder = async function(holdId) {
       state.cartCustomerName = '';
       state.cartTableNumber = '';
     }
+    state.transactions = (state.transactions || []).filter(t => t.id !== holdId);
+    try {
+      const raw = localStorage.getItem('poshere_local_db');
+      if (raw) {
+        const db = JSON.parse(raw);
+        if (db.transactions) {
+          db.transactions = db.transactions.filter(t => t.id !== holdId);
+          localStorage.setItem('poshere_local_db', JSON.stringify(db));
+        }
+      }
+    } catch (e) {}
+
     await loadAllData();
     openModal('hold_orders');
     showToast('Pesanan hold berhasil dihapus', 'success');
@@ -3318,14 +3354,25 @@ window.deleteCategory = async function(id) {
   });
   if (!confirmed) return;
 
+  await deleteFromNeonServer('categories', id);
   await dbService.deleteCategory(id);
   state.categories = (state.categories || []).filter(c => c.id !== id);
+  (state.products || []).forEach(p => {
+    if (p.category_id === id) p.category_id = null;
+  });
   if (state.selectedCategory === id) {
     state.selectedCategory = 'all';
   }
-  if (window.syncDataToNeonServer) {
-    await window.syncDataToNeonServer(true);
-  }
+  try {
+    const raw = localStorage.getItem('poshere_local_db');
+    if (raw) {
+      const db = JSON.parse(raw);
+      if (db.categories) db.categories = db.categories.filter(c => c.id !== id);
+      if (db.products) db.products.forEach(p => { if (p.category_id === id) p.category_id = null; });
+      localStorage.setItem('poshere_local_db', JSON.stringify(db));
+    }
+  } catch (e) {}
+
   await loadAllData();
   renderApp();
   showToast('Kategori berhasil dihapus', 'success');
@@ -3360,6 +3407,7 @@ window.saveCategoryForm = async function(event, id) {
   }
   await loadAllData();
   renderApp();
+  showToast('Kategori berhasil disimpan', 'success');
 };
 
 // Master Product Actions
@@ -3382,11 +3430,18 @@ window.deleteProduct = async function(id) {
     icon: 'trash'
   });
   if (confirmed) {
+    await deleteFromNeonServer('products', id);
     await dbService.deleteProduct(id);
     state.products = (state.products || []).filter(p => p.id !== id);
-    if (window.syncDataToNeonServer) {
-      await window.syncDataToNeonServer(true);
-    }
+    try {
+      const raw = localStorage.getItem('poshere_local_db');
+      if (raw) {
+        const db = JSON.parse(raw);
+        if (db.products) db.products = db.products.filter(p => p.id !== id);
+        localStorage.setItem('poshere_local_db', JSON.stringify(db));
+      }
+    } catch (e) {}
+
     await loadAllData();
     renderApp();
     showToast('Produk berhasil dihapus', 'success');
@@ -3423,7 +3478,8 @@ window.handleProductImageUpload = async function(input) {
 window.saveProductForm = async function(event, id) {
   event.preventDefault();
   const name = document.getElementById('pform-name').value;
-  const category_id = document.getElementById('pform-cat').value;
+  const rawCat = document.getElementById('pform-cat') ? document.getElementById('pform-cat').value : null;
+  const category_id = rawCat && rawCat.trim() !== '' ? rawCat.trim() : null;
   const sku = document.getElementById('pform-sku').value;
   const price = document.getElementById('pform-price').value;
   const cost_price = document.getElementById('pform-cost').value;
@@ -3449,6 +3505,7 @@ window.saveProductForm = async function(event, id) {
   }
   await loadAllData();
   renderApp();
+  showToast('Produk berhasil disimpan', 'success');
 };
 
 // Master Payment Actions
@@ -3471,11 +3528,18 @@ window.deletePayment = async function(id) {
     icon: 'trash'
   });
   if (confirmed) {
+    await deleteFromNeonServer('payment_methods', id);
     await dbService.deletePaymentMethod(id);
     state.paymentMethods = (state.paymentMethods || []).filter(p => p.id !== id);
-    if (window.syncDataToNeonServer) {
-      await window.syncDataToNeonServer(true);
-    }
+    try {
+      const raw = localStorage.getItem('poshere_local_db');
+      if (raw) {
+        const db = JSON.parse(raw);
+        if (db.payment_methods) db.payment_methods = db.payment_methods.filter(p => p.id !== id);
+        localStorage.setItem('poshere_local_db', JSON.stringify(db));
+      }
+    } catch (e) {}
+
     await loadAllData();
     renderApp();
     showToast('Metode pembayaran berhasil dihapus', 'success');
@@ -3596,6 +3660,14 @@ window.editUser = function(id) {
 };
 
 window.deleteUser = async function(id) {
+  if (id === 'usr_superadmin') {
+    await showAlertDialog({
+      title: 'Akses Dibatasi',
+      message: 'Akun Super Administrator utama sistem tidak boleh dihapus demi keamanan operasional.',
+      type: 'warning'
+    });
+    return;
+  }
   const confirmed = await showConfirmDialog({
     title: 'Hapus User Kasir',
     message: 'Apakah Anda yakin ingin menghapus akses akun staf kasir ini?',
@@ -3605,11 +3677,18 @@ window.deleteUser = async function(id) {
     icon: 'trash'
   });
   if (confirmed) {
+    await deleteFromNeonServer('users', id);
     await dbService.deleteUser(id);
     state.users = (state.users || []).filter(u => u.id !== id);
-    if (window.syncDataToNeonServer) {
-      await window.syncDataToNeonServer(true);
-    }
+    try {
+      const raw = localStorage.getItem('poshere_local_db');
+      if (raw) {
+        const db = JSON.parse(raw);
+        if (db.users) db.users = db.users.filter(u => u.id !== id);
+        localStorage.setItem('poshere_local_db', JSON.stringify(db));
+      }
+    } catch (e) {}
+
     await loadAllData();
     renderApp();
     showToast('User berhasil dihapus', 'success');
@@ -3705,6 +3784,52 @@ window.saveTenantSubmit = async function(event) {
   await loadAllData();
   renderApp();
   showToast(`Toko "${name}" berhasil disimpan!`, 'success');
+};
+
+window.deleteTenant = async function(id) {
+  if (id === 'tenant_main') {
+    await showAlertDialog({
+      title: 'Akses Dibatasi',
+      message: 'Toko utama (Flagship Store) tidak boleh dihapus demi menjaga integritas sistem.',
+      type: 'warning'
+    });
+    return;
+  }
+  const tenant = (state.tenants || []).find(t => t.id === id);
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus Toko & Data Tenant',
+    message: `Apakah Anda yakin ingin menghapus toko "${tenant?.name || id}"?\n\nPERINGATAN: Seluruh produk, kategori, metode bayar, mesin kasir, dan riwayat transaksi terkait toko ini akan ikut terhapus secara permanen dari cloud database!`,
+    confirmText: 'Ya, Hapus Toko Permanen',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (!confirmed) return;
+
+  await deleteFromNeonServer('tenants', id);
+  state.tenants = (state.tenants || []).filter(t => t.id !== id);
+  if (state.activeTenantId === id) {
+    state.activeTenantId = 'tenant_main';
+    localStorage.setItem('poshere_active_tenant_id', 'tenant_main');
+  }
+  try {
+    const raw = localStorage.getItem('poshere_local_db');
+    if (raw) {
+      const db = JSON.parse(raw);
+      if (db.tenants) db.tenants = db.tenants.filter(t => t.id !== id);
+      if (db.products) db.products = db.products.filter(p => p.tenant_id !== id);
+      if (db.categories) db.categories = db.categories.filter(c => c.tenant_id !== id);
+      if (db.payment_methods) db.payment_methods = db.payment_methods.filter(p => p.tenant_id !== id);
+      if (db.cash_registers) db.cash_registers = db.cash_registers.filter(r => r.tenant_id !== id);
+      if (db.users) db.users = db.users.filter(u => u.tenant_id !== id || u.role === 'super_admin');
+      if (db.transactions) db.transactions = db.transactions.filter(t => t.tenant_id !== id);
+      localStorage.setItem('poshere_local_db', JSON.stringify(db));
+    }
+  } catch (e) {}
+
+  await loadAllData();
+  renderApp();
+  showToast('Toko dan seluruh data terkait berhasil dihapus', 'success');
 };
 
 // RBAC Role Action Handlers
@@ -3890,11 +4015,21 @@ window.deleteRegister = async function(id) {
     icon: 'trash'
   });
   if (confirmed) {
+    await deleteFromNeonServer('cash_registers', id);
     await dbService.deleteCashRegister(id);
     state.cashRegisters = (state.cashRegisters || []).filter(r => r.id !== id);
-    if (window.syncDataToNeonServer) {
-      await window.syncDataToNeonServer(true);
+    if (state.activeRegister?.id === id) {
+      state.activeRegister = state.cashRegisters[0] || null;
     }
+    try {
+      const raw = localStorage.getItem('poshere_local_db');
+      if (raw) {
+        const db = JSON.parse(raw);
+        if (db.cash_registers) db.cash_registers = db.cash_registers.filter(r => r.id !== id);
+        localStorage.setItem('poshere_local_db', JSON.stringify(db));
+      }
+    } catch (e) {}
+
     await loadAllData();
     renderApp();
     showToast('Mesin kasir berhasil dihapus', 'success');
@@ -3928,6 +4063,7 @@ window.saveRegisterForm = async function(event, id) {
   }
   await loadAllData();
   renderApp();
+  showToast('Mesin kasir berhasil disimpan', 'success');
 };
 
 // Customer Facing Display Handlers & Renderer

@@ -234,7 +234,7 @@ function monolithicApiPlugin() {
           if (pathname === '/api/neon/pull' && method === 'GET') {
             try {
               const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-              const requestedTenantId = url.searchParams.get('tenant_id') || req.headers['x-tenant-id'] || null;
+              const requestedTenantId = url.searchParams.get('tenant_id') || req.headers['x-tenant-id'] || 'tenant_main';
 
               let tenants = [];
               let roles = [];
@@ -355,27 +355,72 @@ function monolithicApiPlugin() {
               `;
             }
 
+            // Process explicitly deleted items if any
+            const { deleted_items = [] } = body || {};
+            for (const del of deleted_items) {
+              try {
+                if (del.entity === 'products') await neonSql`DELETE FROM products WHERE id = ${del.id};`;
+                else if (del.entity === 'categories') {
+                  await neonSql`UPDATE products SET category_id = NULL WHERE category_id = ${del.id};`;
+                  await neonSql`DELETE FROM categories WHERE id = ${del.id};`;
+                }
+                else if (del.entity === 'payment_methods') await neonSql`DELETE FROM payment_methods WHERE id = ${del.id};`;
+                else if (del.entity === 'cash_registers') await neonSql`DELETE FROM cash_registers WHERE id = ${del.id};`;
+                else if (del.entity === 'users' && del.id !== 'usr_superadmin') await neonSql`DELETE FROM users WHERE id = ${del.id};`;
+                else if (del.entity === 'transactions') await neonSql`DELETE FROM transactions WHERE id = ${del.id};`;
+              } catch (delErr) {
+                console.warn('Vite sync delete item error:', delErr.message);
+              }
+            }
+
             // 2. Products
             for (const p of products) {
-              await neonSql`
-                INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active, tenant_id)
-                VALUES (
-                  ${p.id}, ${p.category_id || null}, ${p.name}, 
-                  ${p.price || 0}, ${p.cost_price || 0}, ${p.stock || 0}, 
-                  ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)},
-                  ${p.tenant_id || activeTenantId}
-                )
-                ON CONFLICT (id) DO UPDATE SET
-                  category_id = EXCLUDED.category_id,
-                  name = EXCLUDED.name,
-                  price = EXCLUDED.price,
-                  cost_price = EXCLUDED.cost_price,
-                  stock = EXCLUDED.stock,
-                  sku = EXCLUDED.sku,
-                  image_path = EXCLUDED.image_path,
-                  is_active = EXCLUDED.is_active,
-                  tenant_id = EXCLUDED.tenant_id;
-              `;
+              const catId = p.category_id && p.category_id.trim() ? p.category_id.trim() : null;
+              try {
+                await neonSql`
+                  INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active, tenant_id)
+                  VALUES (
+                    ${p.id}, ${catId}, ${p.name}, 
+                    ${Number(p.price) || 0}, ${Number(p.cost_price) || 0}, ${Number(p.stock) || 0}, 
+                    ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)},
+                    ${p.tenant_id || activeTenantId}
+                  )
+                  ON CONFLICT (id) DO UPDATE SET
+                    category_id = EXCLUDED.category_id,
+                    name = EXCLUDED.name,
+                    price = EXCLUDED.price,
+                    cost_price = EXCLUDED.cost_price,
+                    stock = EXCLUDED.stock,
+                    sku = EXCLUDED.sku,
+                    image_path = EXCLUDED.image_path,
+                    is_active = EXCLUDED.is_active,
+                    tenant_id = EXCLUDED.tenant_id;
+                `;
+              } catch (errProd) {
+                try {
+                  await neonSql`
+                    INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active, tenant_id)
+                    VALUES (
+                      ${p.id}, NULL, ${p.name}, 
+                      ${Number(p.price) || 0}, ${Number(p.cost_price) || 0}, ${Number(p.stock) || 0}, 
+                      ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)},
+                      ${p.tenant_id || activeTenantId}
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                      category_id = EXCLUDED.category_id,
+                      name = EXCLUDED.name,
+                      price = EXCLUDED.price,
+                      cost_price = EXCLUDED.cost_price,
+                      stock = EXCLUDED.stock,
+                      sku = EXCLUDED.sku,
+                      image_path = EXCLUDED.image_path,
+                      is_active = EXCLUDED.is_active,
+                      tenant_id = EXCLUDED.tenant_id;
+                  `;
+                } catch (e2) {
+                  console.warn('Vite sync product fallback error for ' + p.name, e2.message);
+                }
+              }
             }
 
             // 3. Users
@@ -483,6 +528,57 @@ function monolithicApiPlugin() {
                 transactions: transactions.length
               }
             });
+          }
+
+          // --- NEON POSTGRESQL DELETE HANDLER ---
+          if (pathname === '/api/neon/delete' && (method === 'POST' || method === 'DELETE')) {
+            const body = await parseBody(req);
+            const { entity, id } = body || {};
+
+            if (!entity || !id) {
+              return sendJson(res, 400, { success: false, message: 'Entity dan ID wajib disertakan.' });
+            }
+
+            try {
+              if (entity === 'products') {
+                await neonSql`DELETE FROM products WHERE id = ${id};`;
+              } else if (entity === 'categories') {
+                await neonSql`UPDATE products SET category_id = NULL WHERE category_id = ${id};`;
+                await neonSql`DELETE FROM categories WHERE id = ${id};`;
+              } else if (entity === 'payment_methods') {
+                await neonSql`DELETE FROM payment_methods WHERE id = ${id};`;
+              } else if (entity === 'cash_registers') {
+                await neonSql`DELETE FROM cash_registers WHERE id = ${id};`;
+              } else if (entity === 'users') {
+                if (id === 'usr_superadmin') {
+                  return sendJson(res, 400, { success: false, message: 'Akun Super Administrator utama tidak boleh dihapus.' });
+                }
+                await neonSql`DELETE FROM users WHERE id = ${id};`;
+              } else if (entity === 'transactions') {
+                await neonSql`DELETE FROM transactions WHERE id = ${id};`;
+              } else if (entity === 'tenants') {
+                if (id === 'tenant_main') {
+                  return sendJson(res, 400, { success: false, message: 'Toko utama (Flagship Store) tidak boleh dihapus.' });
+                }
+                await neonSql`DELETE FROM products WHERE tenant_id = ${id};`;
+                await neonSql`DELETE FROM categories WHERE tenant_id = ${id};`;
+                await neonSql`DELETE FROM payment_methods WHERE tenant_id = ${id};`;
+                await neonSql`DELETE FROM cash_registers WHERE tenant_id = ${id};`;
+                await neonSql`DELETE FROM users WHERE tenant_id = ${id} AND role != 'super_admin';`;
+                await neonSql`DELETE FROM transactions WHERE tenant_id = ${id};`;
+                await neonSql`DELETE FROM tenants WHERE id = ${id};`;
+              } else {
+                return sendJson(res, 400, { success: false, message: `Entity ${entity} tidak dikenali.` });
+              }
+
+              return sendJson(res, 200, {
+                success: true,
+                message: `Data ${id} berhasil dihapus permanen dari server database Neon (${entity}).`
+              });
+            } catch (delErr) {
+              console.error('Vite Neon Delete Error:', delErr);
+              return sendJson(res, 500, { success: false, error: delErr.message });
+            }
           }
 
           // --- JWT AUTH LOGIN (Email or Username with Password/PIN) ---

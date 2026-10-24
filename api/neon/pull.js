@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const requestedTenantId = url.searchParams.get('tenant_id') || req.headers['x-tenant-id'] || null;
+    const requestedTenantId = url.searchParams.get('tenant_id') || req.headers['x-tenant-id'] || 'tenant_main';
 
     // Fetch Tenants & Roles
     let tenants = [];

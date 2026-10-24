@@ -101,27 +101,72 @@ export default async function handler(req, res) {
       `;
     }
 
+    // Process explicitly deleted items if any
+    const { deleted_items = [] } = body || {};
+    for (const del of deleted_items) {
+      try {
+        if (del.entity === 'products') await sql`DELETE FROM products WHERE id = ${del.id};`;
+        else if (del.entity === 'categories') {
+          await sql`UPDATE products SET category_id = NULL WHERE category_id = ${del.id};`;
+          await sql`DELETE FROM categories WHERE id = ${del.id};`;
+        }
+        else if (del.entity === 'payment_methods') await sql`DELETE FROM payment_methods WHERE id = ${del.id};`;
+        else if (del.entity === 'cash_registers') await sql`DELETE FROM cash_registers WHERE id = ${del.id};`;
+        else if (del.entity === 'users' && del.id !== 'usr_superadmin') await sql`DELETE FROM users WHERE id = ${del.id};`;
+        else if (del.entity === 'transactions') await sql`DELETE FROM transactions WHERE id = ${del.id};`;
+      } catch (delErr) {
+        console.warn('Sync delete item error:', delErr.message);
+      }
+    }
+
     // 2. Products
     for (const p of products) {
-      await sql`
-        INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active, tenant_id)
-        VALUES (
-          ${p.id}, ${p.category_id || null}, ${p.name}, 
-          ${p.price || 0}, ${p.cost_price || 0}, ${p.stock || 0}, 
-          ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)},
-          ${p.tenant_id || activeTenantId}
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          category_id = EXCLUDED.category_id,
-          name = EXCLUDED.name,
-          price = EXCLUDED.price,
-          cost_price = EXCLUDED.cost_price,
-          stock = EXCLUDED.stock,
-          sku = EXCLUDED.sku,
-          image_path = EXCLUDED.image_path,
-          is_active = EXCLUDED.is_active,
-          tenant_id = EXCLUDED.tenant_id;
-      `;
+      const catId = p.category_id && p.category_id.trim() ? p.category_id.trim() : null;
+      try {
+        await sql`
+          INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active, tenant_id)
+          VALUES (
+            ${p.id}, ${catId}, ${p.name}, 
+            ${Number(p.price) || 0}, ${Number(p.cost_price) || 0}, ${Number(p.stock) || 0}, 
+            ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)},
+            ${p.tenant_id || activeTenantId}
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            category_id = EXCLUDED.category_id,
+            name = EXCLUDED.name,
+            price = EXCLUDED.price,
+            cost_price = EXCLUDED.cost_price,
+            stock = EXCLUDED.stock,
+            sku = EXCLUDED.sku,
+            image_path = EXCLUDED.image_path,
+            is_active = EXCLUDED.is_active,
+            tenant_id = EXCLUDED.tenant_id;
+        `;
+      } catch (errProd) {
+        try {
+          await sql`
+            INSERT INTO products (id, category_id, name, price, cost_price, stock, sku, image_path, is_active, tenant_id)
+            VALUES (
+              ${p.id}, NULL, ${p.name}, 
+              ${Number(p.price) || 0}, ${Number(p.cost_price) || 0}, ${Number(p.stock) || 0}, 
+              ${p.sku || ''}, ${p.image_path || ''}, ${Boolean(p.is_active)},
+              ${p.tenant_id || activeTenantId}
+            )
+            ON CONFLICT (id) DO UPDATE SET
+              category_id = EXCLUDED.category_id,
+              name = EXCLUDED.name,
+              price = EXCLUDED.price,
+              cost_price = EXCLUDED.cost_price,
+              stock = EXCLUDED.stock,
+              sku = EXCLUDED.sku,
+              image_path = EXCLUDED.image_path,
+              is_active = EXCLUDED.is_active,
+              tenant_id = EXCLUDED.tenant_id;
+          `;
+        } catch (e2) {
+          console.warn('Sync product fallback error for ' + p.name, e2.message);
+        }
+      }
     }
 
     // 3. Users
