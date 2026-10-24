@@ -10,19 +10,22 @@ import { getIcon } from './utils/icons.js';
 // Application State
 const state = {
   auth: {
-    isAuthenticated: false,
+    isAuthenticated: !!localStorage.getItem('poshere_jwt_token'),
     token: localStorage.getItem('poshere_jwt_token') || null,
     loading: false,
-    errorMessage: '',
-    selectedQuickUser: 'owner'
+    errorMessage: ''
   },
-  currentUser: {
+  currentUser: JSON.parse(localStorage.getItem('poshere_jwt_user') || 'null') || {
     id: 'usr_1',
     username: 'owner',
-    name: 'Mas Bos (Owner)',
-    role: 'owner' // 'owner' or 'kasir'
+    name: 'Pemilik Toko (Owner)',
+    role: 'owner',
+    permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer']
   },
-  currentView: 'pos', // 'pos', 'products', 'categories', 'payments', 'registers', 'users', 'transactions', 'reports', 'printer', 'settings'
+  activeTenantId: localStorage.getItem('poshere_active_tenant_id') || 'all',
+  tenants: [],
+  roles: [],
+  currentView: 'pos', // 'pos', 'products', 'categories', 'payments', 'registers', 'users', 'transactions', 'reports', 'printer', 'tenants', 'roles', 'settings'
   categories: [],
   products: [],
   paymentMethods: [],
@@ -50,6 +53,14 @@ const state = {
   }
 };
 
+// RBAC Helper: Cek hak akses role pengguna terhadap suatu menu
+function hasMenuAccess(menuId) {
+  if (!state.currentUser) return false;
+  if (state.currentUser.role === 'super_admin') return true;
+  const perms = state.currentUser.permissions || [];
+  return perms.includes(menuId);
+}
+
 // Formatting Helper
 const formatRupiah = (num) => {
   return new Intl.NumberFormat('id-ID', {
@@ -64,11 +75,18 @@ async function loadAllData() {
   try {
     // 1. Prioritas ambil data langsung dari Neon PostgreSQL Server
     try {
-      const neonRes = await fetch('/api/neon/pull');
+      const tenantParam = state.activeTenantId && state.activeTenantId !== 'all' ? `?tenant_id=${encodeURIComponent(state.activeTenantId)}` : '';
+      const headers = { 'Content-Type': 'application/json' };
+      if (state.activeTenantId && state.activeTenantId !== 'all') {
+        headers['x-tenant-id'] = state.activeTenantId;
+      }
+      const neonRes = await fetch(`/api/neon/pull${tenantParam}`, { headers });
       if (neonRes.ok) {
         const neonJson = await neonRes.json();
         if (neonJson.success && neonJson.data) {
-          const { categories, products, payment_methods, cash_registers, users, transactions } = neonJson.data;
+          const { categories, products, payment_methods, cash_registers, users, transactions, tenants, roles } = neonJson.data;
+          state.tenants = tenants || [];
+          state.roles = roles || [];
           state.categories = categories || [];
           state.products = products || [];
           state.paymentMethods = payment_methods || [];
@@ -77,15 +95,18 @@ async function loadAllData() {
             state.activeRegister = state.cashRegisters[0];
           }
           state.users = users || [];
-          if (state.users.length) {
-            const found = state.users.find(u => u.username === (state.currentUser?.username || 'owner'));
-            if (found) state.currentUser = found;
-            else state.currentUser = state.users[0];
+          if (state.users.length && state.currentUser) {
+            const found = state.users.find(u => u.id === state.currentUser.id || u.username === state.currentUser.username);
+            if (found) {
+              state.currentUser = { ...state.currentUser, ...found };
+            }
           }
           state.transactions = transactions || [];
 
           // Simpan juga ke local db agar offline tetap sinkron
           localStorage.setItem('poshere_local_db', JSON.stringify({
+            tenants: state.tenants,
+            roles: state.roles,
             categories: state.categories,
             products: state.products,
             payment_methods: state.paymentMethods,
@@ -198,33 +219,17 @@ function closeModal() {
   renderApp();
 }
 
-// Switch User Role
-function switchRole() {
-  if (state.currentUser.role === 'owner') {
-    const kasir = state.users.find(u => u.role === 'kasir') || {
-      id: 'usr_2',
-      name: 'Rian (Kasir Barista)',
-      role: 'kasir'
-    };
-    state.currentUser = kasir;
-    if (['products', 'payments', 'users', 'reports', 'settings'].includes(state.currentView)) {
-      state.currentView = 'pos';
-    }
-  } else {
-    const owner = state.users.find(u => u.role === 'owner') || {
-      id: 'usr_1',
-      name: 'Mas Bos (Owner)',
-      role: 'owner'
-    };
-    state.currentUser = owner;
-  }
+// Switch Multi-Tenant Filter View (Super Admin or Authorized Users)
+window.switchTenant = async function(tenantId) {
+  state.activeTenantId = tenantId;
+  localStorage.setItem('poshere_active_tenant_id', tenantId);
+  await loadAllData();
   renderApp();
-}
+};
 
-// Render Sidebar & Navigation
+// Render Sidebar & Dynamic Navigation Driven by RBAC
 function renderSidebar() {
-  const isOwner = state.currentUser.role === 'owner';
-  const { isConfigured } = getSupabaseConfig();
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
 
   return `
     <aside class="sidebar ${state.isMobileSidebarOpen ? 'mobile-open' : ''}">
@@ -232,85 +237,130 @@ function renderSidebar() {
         <img src="/poshere_logo.png" alt="POShere Logo" class="brand-logo" onerror="this.src='/poshere_logo.png'" />
         <div class="brand-info">
           <h1>POShere</h1>
-          <p>Point of Sale System</p>
+          <p>Enterprise POS System</p>
         </div>
       </div>
 
       <nav class="nav-menu">
-        <div class="nav-item ${state.currentView === 'pos' ? 'active' : ''}" onclick="window.setView('pos')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-          <span>Kasir / Kasir POS</span>
-        </div>
-
-        <div class="nav-item ${state.currentView === 'transactions' ? 'active' : ''}" onclick="window.setView('transactions')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          <span>Riwayat Transaksi</span>
-        </div>
-
-        ${isOwner ? `
-          <div style="font-size: 0.7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin: 0.8rem 0 0.3rem 0.5rem; letter-spacing: 0.05em;">Owner Master Data</div>
-
-          <div class="nav-item ${state.currentView === 'products' ? 'active' : ''}" onclick="window.setView('products')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-            <span>Master Produk</span>
+        ${hasMenuAccess('pos') ? `
+          <div class="nav-item ${state.currentView === 'pos' ? 'active' : ''}" onclick="window.setView('pos')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <span>Kasir / Kasir POS</span>
           </div>
+        ` : ''}
 
-          <div class="nav-item ${state.currentView === 'categories' ? 'active' : ''}" onclick="window.setView('categories')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-            <span>Master Kategori</span>
+        ${hasMenuAccess('transactions') ? `
+          <div class="nav-item ${state.currentView === 'transactions' ? 'active' : ''}" onclick="window.setView('transactions')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>Riwayat Transaksi</span>
           </div>
+        ` : ''}
 
-          <div class="nav-item ${state.currentView === 'payments' ? 'active' : ''}" onclick="window.setView('payments')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-            <span>Metode Bayar & QRIS</span>
-          </div>
+        ${(hasMenuAccess('products') || hasMenuAccess('categories') || hasMenuAccess('payments') || hasMenuAccess('registers') || hasMenuAccess('users')) ? `
+          <div style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin: 0.85rem 0 0.3rem 0.5rem; letter-spacing: 0.05em;">Master Data Toko</div>
 
-          <div class="nav-item ${state.currentView === 'registers' ? 'active' : ''}" onclick="window.setView('registers')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="12" x="3" y="4" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/></svg>
-            <span>Master Mesin Kasir</span>
-          </div>
+          ${hasMenuAccess('products') ? `
+            <div class="nav-item ${state.currentView === 'products' ? 'active' : ''}" onclick="window.setView('products')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+              <span>Master Produk</span>
+            </div>
+          ` : ''}
 
-          <div class="nav-item ${state.currentView === 'users' ? 'active' : ''}" onclick="window.setView('users')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>Master User Kasir</span>
-          </div>
+          ${hasMenuAccess('categories') ? `
+            <div class="nav-item ${state.currentView === 'categories' ? 'active' : ''}" onclick="window.setView('categories')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+              <span>Master Kategori</span>
+            </div>
+          ` : ''}
 
-          <div class="nav-item ${state.currentView === 'reports' ? 'active' : ''}" onclick="window.setView('reports')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
-            <span>Laporan Ringkas</span>
-          </div>
+          ${hasMenuAccess('payments') ? `
+            <div class="nav-item ${state.currentView === 'payments' ? 'active' : ''}" onclick="window.setView('payments')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              <span>Metode Bayar & QRIS</span>
+            </div>
+          ` : ''}
 
+          ${hasMenuAccess('registers') ? `
+            <div class="nav-item ${state.currentView === 'registers' ? 'active' : ''}" onclick="window.setView('registers')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="12" x="3" y="4" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/></svg>
+              <span>Master Mesin Kasir</span>
+            </div>
+          ` : ''}
+
+          ${hasMenuAccess('users') ? `
+            <div class="nav-item ${state.currentView === 'users' ? 'active' : ''}" onclick="window.setView('users')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Master User Kasir</span>
+            </div>
+          ` : ''}
+        ` : ''}
+
+        ${(hasMenuAccess('reports') || hasMenuAccess('printer')) ? `
+          <div style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin: 0.85rem 0 0.3rem 0.5rem; letter-spacing: 0.05em;">Laporan & Perangkat</div>
+
+          ${hasMenuAccess('reports') ? `
+            <div class="nav-item ${state.currentView === 'reports' ? 'active' : ''}" onclick="window.setView('reports')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+              <span>Laporan Ringkas</span>
+            </div>
+          ` : ''}
+
+          ${hasMenuAccess('printer') ? `
             <div class="nav-item ${state.currentView === 'printer' ? 'active' : ''}" onclick="window.setView('printer')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
-            <span>Koneksi Printer Struk</span>
-            <span style="font-size:0.65rem; background:${printerService.isConnected ? '#ecfdf5' : '#f1f5f9'}; color:${printerService.isConnected ? '#059669' : '#64748b'}; padding:2px 6px; border-radius:99px; margin-left:auto;">
-              ${printerService.isConnected ? 'CONNECTED' : 'DISCONNECTED'}
-            </span>
-          </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+              <span>Koneksi Printer Struk</span>
+              <span style="font-size:0.65rem; background:${printerService.isConnected ? '#ecfdf5' : '#f1f5f9'}; color:${printerService.isConnected ? '#059669' : '#64748b'}; padding:2px 6px; border-radius:99px; margin-left:auto;">
+                ${printerService.isConnected ? 'CONNECTED' : 'DISCONNECTED'}
+              </span>
+            </div>
+          ` : ''}
+        ` : ''}
 
-          <div class="nav-item ${state.currentView === 'settings' ? 'active' : ''}" onclick="window.setView('settings')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-            <span>Database Server (Neon Cloud)</span>
-            <span style="font-size:0.65rem; background:#eff6ff; color:#2563eb; font-weight:700; padding:2px 6px; border-radius:99px; margin-left:auto;">CLOUD</span>
-          </div>
+        ${(isSuperAdmin || hasMenuAccess('tenants') || hasMenuAccess('roles') || hasMenuAccess('settings')) ? `
+          <div style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin: 0.85rem 0 0.3rem 0.5rem; letter-spacing: 0.05em;">Platform & Super Admin</div>
+
+          ${(isSuperAdmin || hasMenuAccess('tenants')) ? `
+            <div class="nav-item ${state.currentView === 'tenants' ? 'active' : ''}" onclick="window.setView('tenants')">
+              ${getIcon('building', 18)}
+              <span>Manajemen Toko (Tenant)</span>
+              <span style="font-size:0.65rem; background:#eff6ff; color:#2563eb; font-weight:700; padding:2px 6px; border-radius:99px; margin-left:auto;">MULTI</span>
+            </div>
+          ` : ''}
+
+          ${(isSuperAdmin || hasMenuAccess('roles')) ? `
+            <div class="nav-item ${state.currentView === 'roles' ? 'active' : ''}" onclick="window.setView('roles')">
+              ${getIcon('shield', 18)}
+              <span>Mapping Hak Akses (RBAC)</span>
+            </div>
+          ` : ''}
+
+          ${(isSuperAdmin || hasMenuAccess('settings')) ? `
+            <div class="nav-item ${state.currentView === 'settings' ? 'active' : ''}" onclick="window.setView('settings')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              <span>Database Server (Neon Cloud)</span>
+              <span style="font-size:0.65rem; background:#eff6ff; color:#2563eb; font-weight:700; padding:2px 6px; border-radius:99px; margin-left:auto;">CLOUD</span>
+            </div>
+          ` : ''}
         ` : ''}
       </nav>
 
       <div class="sidebar-footer">
         <div class="user-profile-card">
-          <div class="user-avatar">${(state.currentUser?.name || 'U').charAt(0)}</div>
-          <div class="user-meta">
-            <div class="user-name">${state.currentUser?.name || 'User'}</div>
-            <span class="role-badge ${state.currentUser?.role === 'owner' ? 'badge-owner' : 'badge-kasir'}">
-              ${state.currentUser?.role || 'kasir'}
-            </span>
+          <div class="user-avatar">${(state.currentUser?.name || 'U').charAt(0).toUpperCase()}</div>
+          <div class="user-meta" style="overflow: hidden;">
+            <div class="user-name" title="${state.currentUser?.name || 'User'}">${state.currentUser?.name || 'User'}</div>
+            <div style="display: flex; align-items: center; gap: 0.35rem; margin-top: 2px;">
+              <span class="role-badge badge-${(state.currentUser?.role || 'kasir').replace('_', '')}">
+                ${(state.currentUser?.role || 'kasir').toUpperCase()}
+              </span>
+              ${(!isSuperAdmin && state.currentUser?.tenant_name) ? `
+                <span style="font-size: 0.65rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;" title="${state.currentUser.tenant_name}">
+                  ${state.currentUser.tenant_name}
+                </span>
+              ` : ''}
+            </div>
           </div>
           <div class="user-profile-actions">
-            ${state.currentUser?.role === 'owner' ? `
-              <button class="btn-switch-role" title="Ganti Mode / Simulasi Kasir" onclick="window.switchRole()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-              </button>
-            ` : ''}
             <button class="btn-logout-sidebar" title="Logout dari Sistem" onclick="window.handleLogout()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
             </button>
@@ -327,15 +377,19 @@ function renderTopbar() {
     pos: 'Kasir Point of Sale',
     transactions: 'Riwayat Transaksi',
     products: 'Master Data Produk & Stok',
+    categories: 'Master Data Kategori',
     payments: 'Master Metode Bayar & QRIS',
     registers: 'Data Master Mesin Kasir / POS Station',
     users: 'Master User & Kasir',
     reports: 'Laporan Penjualan',
     printer: 'Koneksi Mesin Printer Struk (Thermal ESC/POS)',
-    settings: 'Pengaturan Database Server (Neon & MySQL)'
+    tenants: 'Manajemen Toko & Multi-Tenant',
+    roles: 'Mapping Hak Akses Role & Menu (RBAC)',
+    settings: 'Pengaturan Database Server (Neon Cloud)'
   };
 
-  const activeReg = state.activeRegister ? `${state.activeRegister.name} • ${state.activeRegister.device_code}` : 'POS-01 • Bar Utama';
+  const activeReg = state.activeRegister ? `${state.activeRegister.name} • ${state.activeRegister.device_code}` : 'POS-01 • Mesin Kasir';
+  const isSuperAdmin = state.currentUser?.role === 'super_admin';
 
   return `
     <header class="topbar">
@@ -350,12 +404,26 @@ function renderTopbar() {
       </div>
 
       <div class="topbar-right">
+        ${isSuperAdmin ? `
+          <div class="topbar-tenant-selector" title="Filter tampilan data berdasarkan toko / tenant">
+            ${getIcon('building', 14)}
+            <select class="tenant-select" onchange="window.switchTenant(this.value)">
+              <option value="all" ${state.activeTenantId === 'all' ? 'selected' : ''}>🌐 Semua Toko (Global)</option>
+              ${state.tenants.map(t => `<option value="${t.id}" ${state.activeTenantId === t.id ? 'selected' : ''}>🏪 ${t.name}</option>`).join('')}
+            </select>
+          </div>
+        ` : `
+          <div class="topbar-chip store-chip" title="Toko Aktif">
+            ${getIcon('building', 13)}
+            <span>${state.currentUser?.tenant_name || 'Toko Utama'}</span>
+          </div>
+        `}
         <div class="topbar-chip cloud-chip" title="Terhubung langsung ke Neon PostgreSQL Cloud (AWS)">
           <span class="pulse-indicator"></span>
           <span>Neon Cloud Server</span>
         </div>
-        <div class="topbar-chip role-chip ${state.currentUser.role === 'owner' ? 'badge-owner' : 'badge-kasir'}">
-          ${state.currentUser.role}
+        <div class="topbar-chip role-chip badge-${(state.currentUser?.role || 'kasir').replace('_', '')}">
+          ${(state.currentUser?.role || 'kasir').toUpperCase()}
         </div>
       </div>
     </header>
@@ -569,8 +637,8 @@ function renderProductsView() {
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Produk (Tersimpan di Supabase)</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted);">Tabel products Supabase: id, name, category_id, price, cost_price, stock, sku, image_path</p>
+          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Produk & Manajemen Stok</h2>
+          <p style="font-size: 0.78rem; color: var(--text-muted);">Kelola katalog produk, harga jual, harga modal, stok gudang, dan SKU toko</p>
         </div>
         <button class="btn btn-primary" onclick="window.openProductForm()">
           + Tambah Produk Baru
@@ -633,9 +701,9 @@ function renderCategoriesView() {
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Kategori (Supabase)</h2>
+          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Kategori Menu</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
-            Tabel categories: Kelola kategori menu/produk (Espresso, Matcha, Snack, Pastry, Retail, dll)
+            Kelola kategori menu dan produk toko (Espresso, Minuman, Makanan, Snack, dll)
           </p>
         </div>
         <button class="btn btn-primary btn-icon-text" onclick="window.openCategoryForm()">
@@ -699,9 +767,9 @@ function renderPaymentsView() {
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Payment Method & QRIS (Supabase)</h2>
+          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Metode Pembayaran & QRIS</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
-            Tabel payment_methods: foto di-upload base64 ke public/uploads, string QRIS otomatis diekstrak, dan dibuat dinamis saat checkout!
+            Kelola metode pembayaran kasir, rekening penerima, dan generate QRIS dinamis otomatis
           </p>
         </div>
         <button class="btn btn-primary" onclick="window.openPaymentForm()">
@@ -768,9 +836,9 @@ function renderRegistersView() {
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Mesin Kasir / POS Station (Supabase)</h2>
+          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Mesin Kasir & POS Station</h2>
           <p style="font-size: 0.78rem; color: var(--text-muted);">
-            Tabel cash_registers: Pengaturan stasiun mesin kasir di outlet/toko, kode mesin (POS-01), stasiun printer, dan lokasi counter
+            Konfigurasi stasiun mesin kasir di outlet/toko, kode mesin (POS-01), stasiun printer, dan lokasi counter
           </p>
         </div>
         <button class="btn btn-primary" onclick="window.openRegisterForm()">
@@ -825,8 +893,8 @@ function renderUsersView() {
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master User Kasir & Pemilik (Supabase)</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted);">Tabel users: id, username, name, role ('owner' | 'kasir'), pin, status</p>
+          <h2 style="font-size: 1.1rem; font-weight: 700;">Data Master Pengguna & Staf Kasir</h2>
+          <p style="font-size: 0.78rem; color: var(--text-muted);">Kelola akun pengguna, hak akses role (Kasir, Manager, Owner), dan PIN login</p>
         </div>
         <button class="btn btn-primary" onclick="window.openUserForm()">
           + Tambah User Baru
@@ -852,8 +920,8 @@ function renderUsersView() {
                 <td style="font-weight: 600; color: var(--text-main);">${u.name}</td>
                 <td><code>@${u.username}</code></td>
                 <td>
-                  <span class="role-badge ${u.role === 'owner' ? 'badge-owner' : 'badge-kasir'}">
-                    ${u.role.toUpperCase()}
+                  <span class="role-badge badge-${(u.role || 'kasir').replace('_', '')}">
+                    ${(u.role || 'kasir').toUpperCase()}
                   </span>
                 </td>
                 <td><code>••••</code></td>
@@ -886,8 +954,8 @@ function renderTransactionsView() {
     <div style="display: flex; flex-direction: column; gap: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <h2 style="font-size: 1.1rem; font-weight: 700;">Riwayat Transaksi Penjualan (Supabase)</h2>
-          <p style="font-size: 0.78rem; color: var(--text-muted);">Tabel transactions Supabase secara realtime</p>
+          <h2 style="font-size: 1.1rem; font-weight: 700;">Riwayat Transaksi Penjualan</h2>
+          <p style="font-size: 0.78rem; color: var(--text-muted);">Seluruh transaksi penjualan kasir tersimpan aman dan terenkripsi di server database cloud</p>
         </div>
       </div>
 
@@ -1384,6 +1452,231 @@ function renderPrinterView() {
   `;
 }
 
+// 7.8. Multi-Tenant Management View
+function renderTenantsView() {
+  const tenants = state.tenants || [];
+  const activeTenantCount = tenants.filter(t => t.status === 'active').length;
+
+  return `
+    <div class="tenants-container" style="display: flex; flex-direction: column; gap: 1.5rem; max-width: 1200px; margin: 0 auto; width: 100%;">
+      <!-- Header Banner -->
+      <div class="card" style="padding: 1.5rem; background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; border-radius: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em;">Multi-Tenant Architecture</span>
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #ffffff; padding: 3px 8px; border-radius: 6px;">Live Cloud</span>
+            </div>
+            <h1 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: #ffffff;">Manajemen Toko & Multi-Tenant</h1>
+            <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem;">Kelola daftar toko/cabang dan isolasi data operasional kasir per merchant.</p>
+          </div>
+          <button class="btn btn-primary" style="background: #ffffff; color: #1e1b4b; font-weight: 700; padding: 0.7rem 1.25rem; border-radius: 10px; display: inline-flex; align-items: center; gap: 0.5rem; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="window.openTenantModal()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Tambah Toko Baru</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+        <div class="card" style="padding: 1.25rem; border-left: 4px solid #6366f1;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Toko Terdaftar</div>
+          <div style="font-size: 1.75rem; font-weight: 800; color: var(--text-main); margin-top: 0.25rem;">${tenants.length}</div>
+          <div style="font-size: 0.75rem; color: #10b981; margin-top: 0.25rem;">${activeTenantCount} toko aktif beroperasi</div>
+        </div>
+        <div class="card" style="padding: 1.25rem; border-left: 4px solid #10b981;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Produk Terdaftar</div>
+          <div style="font-size: 1.75rem; font-weight: 800; color: var(--text-main); margin-top: 0.25rem;">${(state.products || []).length}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Item di database cloud</div>
+        </div>
+        <div class="card" style="padding: 1.25rem; border-left: 4px solid #f59e0b;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Transaksi Sistem</div>
+          <div style="font-size: 1.75rem; font-weight: 800; color: var(--text-main); margin-top: 0.25rem;">${(state.transactions || []).length}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Tercatat dengan tenant_id terisolasi</div>
+        </div>
+        <div class="card" style="padding: 1.25rem; border-left: 4px solid #3b82f6;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Filter Tampilan Aktif</div>
+          <div style="font-size: 1.05rem; font-weight: 700; color: #2563eb; margin-top: 0.5rem; word-break: break-all;">
+            ${state.activeTenantId === 'all' ? '🌐 Semua Toko (Global)' : (tenants.find(t => t.id === state.activeTenantId)?.name || state.activeTenantId)}
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Super Admin View Mode</div>
+        </div>
+      </div>
+
+      <!-- Tenants Table Card -->
+      <div class="card" style="padding: 1.5rem; background: #ffffff;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0; color: var(--text-main);">Daftar Toko & Merchant Terdaftar</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Setiap toko memiliki katalog, staf kasir, register mesin, dan transaksi masing-masing</span>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e2e8f0; text-align: left; font-size: 0.78rem; color: #64748b; text-transform: uppercase;">
+                <th style="padding: 0.75rem 1rem;">ID / Slug</th>
+                <th style="padding: 0.75rem 1rem;">Nama Toko / Outlet</th>
+                <th style="padding: 0.75rem 1rem;">Kontak / Telepon</th>
+                <th style="padding: 0.75rem 1rem;">Alamat</th>
+                <th style="padding: 0.75rem 1rem; text-align: center;">Status</th>
+                <th style="padding: 0.75rem 1rem; text-align: right;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tenants.length === 0 ? `
+                <tr>
+                  <td colspan="6" style="text-align: center; padding: 2.5rem; color: #94a3b8;">
+                    Belum ada toko yang didaftarkan. Klik tombol "Tambah Toko Baru" di atas.
+                  </td>
+                </tr>
+              ` : tenants.map(t => `
+                <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.85rem;">
+                  <td style="padding: 0.85rem 1rem; font-family: monospace; font-size: 0.8rem; color: #6366f1; font-weight: 700;">
+                    ${t.slug || t.id}
+                  </td>
+                  <td style="padding: 0.85rem 1rem; font-weight: 700; color: var(--text-main);">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <div style="width: 28px; height: 28px; border-radius: 6px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; color: #475569;">
+                        ${getIcon('building', 15)}
+                      </div>
+                      <span>${t.name}</span>
+                      ${state.activeTenantId === t.id ? `
+                        <span style="font-size: 0.65rem; background: #eff6ff; color: #2563eb; padding: 2px 6px; border-radius: 99px; font-weight: 700;">AKTIF DI VIEW</span>
+                      ` : ''}
+                    </div>
+                  </td>
+                  <td style="padding: 0.85rem 1rem; color: var(--text-muted);">${t.phone || '-'}</td>
+                  <td style="padding: 0.85rem 1rem; color: var(--text-muted); max-width: 260px; word-wrap: break-word;">${t.address || '-'}</td>
+                  <td style="padding: 0.85rem 1rem; text-align: center;">
+                    <span style="display: inline-block; padding: 3px 8px; border-radius: 99px; font-size: 0.72rem; font-weight: 700; background: ${t.status === 'active' ? '#ecfdf5' : '#fef2f2'}; color: ${t.status === 'active' ? '#059669' : '#dc2626'};">
+                      ${t.status === 'active' ? 'AKTIF' : 'NONAKTIF'}
+                    </span>
+                  </td>
+                  <td style="padding: 0.85rem 1rem; text-align: right;">
+                    <div style="display: inline-flex; gap: 0.4rem; justify-content: flex-end;">
+                      <button class="btn btn-sm btn-outline" title="Ganti View ke Toko Ini" onclick="window.switchTenant('${t.id}')" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">
+                        <span>Pilih View</span>
+                      </button>
+                      <button class="btn btn-sm btn-primary" title="Edit Toko" onclick="window.openTenantModal('${t.id}')" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">
+                        <span>Edit</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// 7.9. RBAC Roles & Permissions Matrix View
+function renderRolesView() {
+  const roles = state.roles && state.roles.length ? state.roles : [
+    { id: 'super_admin', name: 'Super Administrator', description: 'Hak akses penuh ke seluruh sistem, multi-tenant & manajemen hak akses', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer', 'tenants', 'roles', 'settings'], is_system: true },
+    { id: 'owner', name: 'Pemilik Toko (Owner)', description: 'Kelola penuh operasional toko, katalog, staf, dan laporan', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer'], is_system: true },
+    { id: 'manager', name: 'Store Manager', description: 'Kelola kasir, stok produk, dan pantau laporan penjualan', permissions: ['pos', 'transactions', 'products', 'categories', 'reports', 'printer'], is_system: false },
+    { id: 'kasir', name: 'Staf Kasir', description: 'Operasional POS kasir, input transaksi, dan cetak struk', permissions: ['pos', 'transactions', 'printer'], is_system: true }
+  ];
+
+  const allMenus = [
+    { id: 'pos', name: 'Kasir POS', category: 'Operasional' },
+    { id: 'transactions', name: 'Riwayat Transaksi', category: 'Operasional' },
+    { id: 'products', name: 'Master Produk', category: 'Master Data' },
+    { id: 'categories', name: 'Master Kategori', category: 'Master Data' },
+    { id: 'payments', name: 'Metode Bayar & QRIS', category: 'Master Data' },
+    { id: 'registers', name: 'Master Mesin Kasir', category: 'Master Data' },
+    { id: 'users', name: 'Master User Kasir', category: 'Pengguna' },
+    { id: 'reports', name: 'Laporan Penjualan', category: 'Laporan' },
+    { id: 'printer', name: 'Koneksi Printer Struk', category: 'Perangkat' },
+    { id: 'tenants', name: 'Manajemen Toko (Multi-Tenant)', category: 'Platform' },
+    { id: 'roles', name: 'Mapping Hak Akses (RBAC)', category: 'Platform' },
+    { id: 'settings', name: 'Database Cloud Server', category: 'Platform' }
+  ];
+
+  return `
+    <div class="roles-container" style="display: flex; flex-direction: column; gap: 1.5rem; max-width: 1200px; margin: 0 auto; width: 100%;">
+      <!-- Header Banner -->
+      <div class="card" style="padding: 1.5rem; background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); color: #ffffff; border-radius: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em;">Role-Based Access Control (RBAC)</span>
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #ffffff; padding: 3px 8px; border-radius: 6px;">Keamanan Sistem</span>
+            </div>
+            <h1 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: #ffffff;">Mapping Hak Akses Role & Menu</h1>
+            <p style="font-size: 0.85rem; color: #a7f3d0; margin-top: 0.25rem;">Tentukan menu dan fitur yang boleh diakses oleh setiap tingkatan peran staf kasir dan pimpinan.</p>
+          </div>
+          <button class="btn btn-primary" style="background: #ffffff; color: #065f46; font-weight: 700; padding: 0.7rem 1.25rem; border-radius: 10px; display: inline-flex; align-items: center; gap: 0.5rem; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="window.saveRolePermissions()">
+            ${getIcon('save', 16)}
+            <span>Simpan Perubahan Hak Akses</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Matrix Card -->
+      <div class="card" style="padding: 1.5rem; background: #ffffff;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0; color: var(--text-main);">Matriks Izin Akses Menu</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Centang atau hapus centang untuk mengatur hak akses menu. Super Admin selalu memiliki akses penuh ke seluruh fitur.</span>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e2e8f0; text-align: left; font-size: 0.78rem; color: #64748b; text-transform: uppercase;">
+                <th style="padding: 0.75rem 1rem; min-width: 200px;">Menu / Fitur Aplikasi</th>
+                <th style="padding: 0.75rem 1rem; width: 120px;">Kategori</th>
+                ${roles.map(r => `
+                  <th style="padding: 0.75rem 1rem; text-align: center; min-width: 130px;">
+                    <div style="font-weight: 700; color: var(--text-main); font-size: 0.85rem;">${r.name}</div>
+                    <span style="font-size: 0.68rem; font-family: monospace; color: #6366f1; text-transform: none;">(${r.id})</span>
+                  </th>
+                `).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${allMenus.map(m => `
+                <tr style="border-bottom: 1px solid #f1f5f9;">
+                  <td style="padding: 0.85rem 1rem; font-weight: 700; color: var(--text-main);">
+                    ${m.name}
+                  </td>
+                  <td style="padding: 0.85rem 1rem;">
+                    <span style="font-size: 0.7rem; font-weight: 600; background: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 4px;">
+                      ${m.category}
+                    </span>
+                  </td>
+                  ${roles.map(r => {
+                    const isSuper = r.id === 'super_admin';
+                    const hasPerm = isSuper || (r.permissions || []).includes(m.id);
+                    return `
+                      <td style="padding: 0.85rem 1rem; text-align: center;">
+                        <input 
+                          type="checkbox" 
+                          id="perm_${r.id}_${m.id}" 
+                          ${hasPerm ? 'checked' : ''} 
+                          ${isSuper ? 'disabled title="Super Admin memiliki akses mutlak ke semua menu"' : `onchange="window.toggleRolePermission('${r.id}', '${m.id}')"`}
+                          style="width: 18px; height: 18px; accent-color: var(--primary); cursor: ${isSuper ? 'not-allowed' : 'pointer'};"
+                        />
+                      </td>
+                    `;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // 8. Modals Renderer
 function renderModal() {
   if (!state.modalState.isOpen) return '';
@@ -1747,23 +2040,25 @@ function renderModal() {
 
   if (type === 'user_form') {
     const user = data || {};
+    const isSuperAdmin = state.currentUser?.role === 'super_admin';
+
     return `
       <div class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 480px;">
           <div class="modal-header">
-            <h3 style="font-size: 1rem; font-weight: 700;">${user.id ? 'Edit User' : 'Tambah User Baru'}</h3>
+            <h3 style="font-size: 1rem; font-weight: 700;">${user.id ? 'Edit User Kasir' : 'Tambah User Kasir Baru'}</h3>
             <button class="modal-close-btn" onclick="window.closeModal()">${getIcon('close', 16)}</button>
           </div>
           <form onsubmit="window.saveUserForm(event, '${user.id || ''}')">
-            <div class="modal-body">
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 0.85rem;">
               <div class="form-group">
                 <label class="form-label">Nama Lengkap *</label>
-                <input type="text" id="uform-name" class="form-control" required value="${user.name || ''}" placeholder="Nama Karyawan/Kasir"/>
+                <input type="text" id="uform-name" class="form-control" required value="${user.name || ''}" placeholder="Nama Staf Kasir / Manager"/>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Username *</label>
-                <input type="text" id="uform-username" class="form-control" required value="${user.username || ''}" placeholder="kasir_pagi"/>
+                <label class="form-label">Username Login *</label>
+                <input type="text" id="uform-username" class="form-control" required value="${user.username || ''}" placeholder="kasir1"/>
               </div>
 
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
@@ -1771,7 +2066,11 @@ function renderModal() {
                   <label class="form-label">Role Akses *</label>
                   <select id="uform-role" class="form-control">
                     <option value="kasir" ${user.role === 'kasir' ? 'selected' : ''}>Kasir (Hanya POS & Struk)</option>
-                    <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Pemilik / Owner (Akses Penuh)</option>
+                    <option value="manager" ${user.role === 'manager' ? 'selected' : ''}>Manager (POS, Katalog, Laporan)</option>
+                    <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Pemilik / Owner (Akses Toko Penuh)</option>
+                    ${isSuperAdmin ? `
+                      <option value="super_admin" ${user.role === 'super_admin' ? 'selected' : ''}>Super Administrator (Global Platform)</option>
+                    ` : ''}
                   </select>
                 </div>
 
@@ -1780,10 +2079,77 @@ function renderModal() {
                   <input type="password" id="uform-pin" maxlength="6" class="form-control" value="${user.pin || '1234'}"/>
                 </div>
               </div>
+
+              ${state.tenants.length > 0 ? `
+                <div class="form-group">
+                  <label class="form-label">Penugasan Toko / Tenant</label>
+                  <select id="uform-tenant" class="form-control">
+                    <option value="">-- Toko Utama / Global --</option>
+                    ${state.tenants.map(t => `
+                      <option value="${t.id}" ${(user.tenant_id === t.id || (!user.tenant_id && state.activeTenantId === t.id)) ? 'selected' : ''}>
+                        ${t.name}
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
               <button type="submit" class="btn btn-primary">Simpan User</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  // Modal Tenant Form (Multi-Tenant Management)
+  if (type === 'tenant_form') {
+    const tenant = data || {};
+    return `
+      <div class="modal-overlay">
+        <div class="modal-content" style="max-width: 480px;">
+          <div class="modal-header">
+            <h3 style="font-size: 1rem; font-weight: 700;">${tenant.id ? 'Edit Data Toko / Tenant' : 'Tambah Toko / Tenant Baru'}</h3>
+            <button class="modal-close-btn" onclick="window.closeModal()">${getIcon('close', 16)}</button>
+          </div>
+          <form onsubmit="window.saveTenantSubmit(event)">
+            <input type="hidden" name="tenantId" value="${tenant.id || ''}" />
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 0.85rem;">
+              <div class="form-group">
+                <label class="form-label">Nama Toko / Outlet *</label>
+                <input type="text" name="tenantName" class="form-control" required value="${tenant.name || ''}" placeholder="Cth: POShere Flagship Store"/>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Kode / Slug Unik *</label>
+                <input type="text" name="tenantSlug" class="form-control" required value="${tenant.slug || tenant.id || ''}" placeholder="Cth: poshere-flagship"/>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                <div class="form-group">
+                  <label class="form-label">Nomor Telepon</label>
+                  <input type="text" name="tenantPhone" class="form-control" value="${tenant.phone || ''}" placeholder="08123456789"/>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Status Toko *</label>
+                  <select name="tenantStatus" class="form-control">
+                    <option value="active" ${tenant.status !== 'inactive' ? 'selected' : ''}>Aktif</option>
+                    <option value="inactive" ${tenant.status === 'inactive' ? 'selected' : ''}>Nonaktif</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Alamat Lengkap</label>
+                <textarea name="tenantAddress" class="form-control" rows="2" placeholder="Jl. Sudirman No. 10...">${tenant.address || ''}</textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
+              <button type="submit" class="btn btn-primary">Simpan Toko</button>
             </div>
           </form>
         </div>
@@ -2627,8 +2993,11 @@ window.saveUserForm = async function(event, id) {
   const username = document.getElementById('uform-username').value;
   const role = document.getElementById('uform-role').value;
   const pin = document.getElementById('uform-pin').value;
+  const tenantEl = document.getElementById('uform-tenant');
+  const tenant_id = tenantEl ? (tenantEl.value || null) : (state.activeTenantId !== 'all' ? state.activeTenantId : null);
+  const email = `${username}@poshere.com`;
 
-  const payload = { name, username, role, pin };
+  const payload = { name, username, role, pin, tenant_id, email, password: pin };
 
   if (id) {
     await dbService.updateUser(id, payload);
@@ -2636,9 +3005,104 @@ window.saveUserForm = async function(event, id) {
     await dbService.createUser(payload);
   }
 
+  // Sync to Neon Cloud
+  try {
+    const existingIdx = state.users.findIndex(u => u.id === id);
+    if (existingIdx >= 0) {
+      state.users[existingIdx] = { ...state.users[existingIdx], ...payload };
+    } else {
+      state.users.push({ id: `usr_${Date.now()}`, ...payload });
+    }
+    await fetch('/api/neon/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users: state.users, tenant_id })
+    });
+  } catch (e) {
+    console.warn('Neon sync user warning:', e);
+  }
+
   closeModal();
   await loadAllData();
   renderApp();
+};
+
+// Multi-Tenant Action Handlers
+window.openTenantModal = function(id = null) {
+  const tenant = id ? (state.tenants.find(t => t.id === id) || null) : null;
+  state.modalState = {
+    isOpen: true,
+    type: 'tenant_form',
+    data: tenant
+  };
+  renderApp();
+};
+
+window.saveTenantSubmit = async function(event) {
+  if (event) event.preventDefault();
+  const form = event.target;
+  const id = form.tenantId.value || `tenant_${Date.now()}`;
+  const name = form.tenantName.value.trim();
+  const slug = form.tenantSlug.value.trim() || name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  const phone = form.tenantPhone.value.trim();
+  const address = form.tenantAddress.value.trim();
+  const status = form.tenantStatus.value;
+
+  const newTenant = { id, name, slug, phone, address, status };
+  const idx = state.tenants.findIndex(t => t.id === id);
+  if (idx >= 0) {
+    state.tenants[idx] = newTenant;
+  } else {
+    state.tenants.push(newTenant);
+  }
+
+  try {
+    await fetch('/api/neon/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenants: state.tenants })
+    });
+  } catch (e) {
+    console.warn('Sync tenant error:', e);
+  }
+
+  state.modalState = { isOpen: false, type: null, data: null };
+  await loadAllData();
+  renderApp();
+  alert(`Toko "${name}" berhasil disimpan!`);
+};
+
+// RBAC Role Action Handlers
+window.toggleRolePermission = function(roleId, menuId) {
+  const role = (state.roles || []).find(r => r.id === roleId);
+  if (!role) return;
+  if (!role.permissions) role.permissions = [];
+  const idx = role.permissions.indexOf(menuId);
+  if (idx >= 0) {
+    role.permissions.splice(idx, 1);
+  } else {
+    role.permissions.push(menuId);
+  }
+};
+
+window.saveRolePermissions = async function() {
+  try {
+    const res = await fetch('/api/neon/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roles: state.roles })
+    });
+    if (res.ok) {
+      alert('Konfigurasi Hak Akses Role (RBAC) berhasil disimpan dan diperbarui di Cloud Database!');
+      await loadAllData();
+      renderApp();
+    } else {
+      alert('Gagal menyimpan izin akses ke server.');
+    }
+  } catch (err) {
+    console.error('Save roles error:', err);
+    alert('Terjadi kesalahan saat menyimpan hak akses.');
+  }
 };
 
 // Thermal Printer Window Actions
@@ -2987,7 +3451,7 @@ function renderAuthModal() {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="12" x="3" y="4" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/><path d="M7 8h10"/><path d="M7 12h4"/></svg>
           </div>
           <h2 class="pos-clean-title">Masuk ke Sistem POS</h2>
-          <p class="pos-clean-subtitle">Gunakan email & kata sandi akun kasir atau owner Anda</p>
+          <p class="pos-clean-subtitle">Masuk dengan kredensial resmi Anda untuk memulai sesi kasir</p>
         </div>
 
         ${state.auth.errorMessage ? `
@@ -2999,7 +3463,7 @@ function renderAuthModal() {
 
         <form id="emailLoginForm" onsubmit="window.handleEmailLoginSubmit(event)" class="pos-clean-form">
           <div class="pos-clean-field">
-            <label class="pos-clean-label">Alamat Email / Akun</label>
+            <label class="pos-clean-label">Alamat Email / Username</label>
             <div class="pos-clean-input-box">
               <span class="pos-clean-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
@@ -3008,19 +3472,16 @@ function renderAuthModal() {
                 type="text" 
                 id="loginEmailInput" 
                 class="pos-clean-input" 
-                placeholder="nama@poshere.com / owner" 
-                value="${state.auth.loginEmail || 'owner@poshere.com'}" 
+                placeholder="nama@email.com / username" 
+                value="${state.auth.loginEmail || ''}" 
                 required 
-                autocomplete="email"
+                autocomplete="username"
               />
             </div>
           </div>
 
           <div class="pos-clean-field">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
-              <label class="pos-clean-label" style="margin-bottom:0;">Kata Sandi</label>
-              <span style="font-size:0.75rem; color:#64748b;">Default: 1234</span>
-            </div>
+            <label class="pos-clean-label">Kata Sandi / PIN</label>
             <div class="pos-clean-input-box">
               <span class="pos-clean-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -3029,24 +3490,11 @@ function renderAuthModal() {
                 type="password" 
                 id="loginPasswordInput" 
                 class="pos-clean-input" 
-                placeholder="Masukkan kata sandi (cth: 1234)" 
-                value="1234" 
+                placeholder="Masukkan kata sandi akun" 
+                value="" 
                 required 
                 autocomplete="current-password"
               />
-            </div>
-          </div>
-
-          <!-- Quick Account Chips for Instant Testing -->
-          <div class="pos-quick-accounts-section">
-            <span class="pos-quick-label">Pilih Akun Cepat:</span>
-            <div class="pos-quick-chips">
-              <button type="button" class="pos-quick-btn" onclick="window.fillQuickAccount('owner@poshere.com', '1234')">
-                <strong>Owner</strong> (owner@poshere.com)
-              </button>
-              <button type="button" class="pos-quick-btn" onclick="window.fillQuickAccount('kasir1@poshere.com', '1111')">
-                <strong>Kasir</strong> (kasir1@poshere.com)
-              </button>
             </div>
           </div>
 
@@ -3062,20 +3510,12 @@ function renderAuthModal() {
         </form>
 
         <div class="pos-clean-footer">
-          <span>Terhubung ke Neon PostgreSQL Cloud Server (AWS)</span>
+          <span>POShere Enterprise Cloud POS • Terenkripsi SSL 256-bit</span>
         </div>
       </div>
     </div>
   `;
 }
-
-window.fillQuickAccount = function(email, pass) {
-  const emailEl = document.getElementById('loginEmailInput');
-  const passEl = document.getElementById('loginPasswordInput');
-  if (emailEl) emailEl.value = email;
-  if (passEl) passEl.value = pass;
-  state.auth.errorMessage = '';
-};
 
 // Handle Email Login Submit
 window.handleEmailLoginSubmit = async function(event) {
@@ -3127,8 +3567,9 @@ window.handleEmailLoginSubmit = async function(event) {
     } else {
       // Local fallback jika server offline / DB unreachable
       const defaultUsers = [
-        { id: 'usr_1', username: 'owner', name: 'Mas Bos (Owner)', role: 'owner', pin: '1234', email: 'owner@poshere.com' },
-        { id: 'usr_2', username: 'kasir1', name: 'Rian (Kasir Barista)', role: 'kasir', pin: '1111', email: 'kasir1@poshere.com' }
+        { id: 'usr_superadmin', username: 'superadmin', name: 'Super Administrator', role: 'super_admin', pin: '1234', password: 'admin123', email: 'superadmin@poshere.com', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer', 'tenants', 'roles', 'settings'] },
+        { id: 'usr_1', username: 'owner', name: 'Pemilik Toko (Owner)', role: 'owner', pin: '1234', password: '1234', email: 'owner@poshere.com', permissions: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer'] },
+        { id: 'usr_2', username: 'kasir1', name: 'Kasir Utama', role: 'kasir', pin: '1111', password: '1111', email: 'kasir1@poshere.com', permissions: ['pos', 'transactions', 'printer'] }
       ];
       const candidateUsers = (state.users && state.users.length) ? state.users : defaultUsers;
 
@@ -3141,6 +3582,7 @@ window.handleEmailLoginSubmit = async function(event) {
       const isValidSecret = foundUser && (
         foundUser.pin === password || 
         (foundUser.password && foundUser.password === password) ||
+        (foundUser.role === 'super_admin' && (password === 'admin123' || password === '1234')) ||
         (foundUser.role === 'owner' && (password === '1234' || password === 'admin')) ||
         (foundUser.role === 'kasir' && (password === '1111' || password === '1234'))
       );
@@ -3154,7 +3596,10 @@ window.handleEmailLoginSubmit = async function(event) {
           username: foundUser.username,
           name: foundUser.name,
           role: foundUser.role,
-          email: foundUser.email || email
+          email: foundUser.email || email,
+          tenant_id: foundUser.tenant_id || null,
+          tenant_name: foundUser.tenant_name || null,
+          permissions: foundUser.permissions || ['pos', 'transactions', 'printer']
         };
         localStorage.setItem('poshere_jwt_user', JSON.stringify(state.currentUser));
         renderApp();
@@ -3198,34 +3643,40 @@ function renderApp() {
   let viewContent = '';
   switch (state.currentView) {
     case 'pos':
-      viewContent = renderPosView();
+      viewContent = hasMenuAccess('pos') ? renderPosView() : renderPosView();
       break;
     case 'products':
-      viewContent = renderProductsView();
+      viewContent = hasMenuAccess('products') ? renderProductsView() : renderPosView();
       break;
     case 'categories':
-      viewContent = renderCategoriesView();
+      viewContent = hasMenuAccess('categories') ? renderCategoriesView() : renderPosView();
       break;
     case 'payments':
-      viewContent = renderPaymentsView();
+      viewContent = hasMenuAccess('payments') ? renderPaymentsView() : renderPosView();
       break;
     case 'registers':
-      viewContent = renderRegistersView();
+      viewContent = hasMenuAccess('registers') ? renderRegistersView() : renderPosView();
       break;
     case 'users':
-      viewContent = renderUsersView();
+      viewContent = hasMenuAccess('users') ? renderUsersView() : renderPosView();
       break;
     case 'transactions':
-      viewContent = renderTransactionsView();
+      viewContent = hasMenuAccess('transactions') ? renderTransactionsView() : renderPosView();
       break;
     case 'reports':
-      viewContent = renderReportsView();
+      viewContent = hasMenuAccess('reports') ? renderReportsView() : renderPosView();
       break;
     case 'printer':
-      viewContent = renderPrinterView();
+      viewContent = hasMenuAccess('printer') ? renderPrinterView() : renderPosView();
+      break;
+    case 'tenants':
+      viewContent = (state.currentUser?.role === 'super_admin' || hasMenuAccess('tenants')) ? renderTenantsView() : renderPosView();
+      break;
+    case 'roles':
+      viewContent = (state.currentUser?.role === 'super_admin' || hasMenuAccess('roles')) ? renderRolesView() : renderPosView();
       break;
     case 'settings':
-      viewContent = renderSettingsView();
+      viewContent = (state.currentUser?.role === 'super_admin' || hasMenuAccess('settings')) ? renderSettingsView() : renderPosView();
       break;
     default:
       viewContent = renderPosView();

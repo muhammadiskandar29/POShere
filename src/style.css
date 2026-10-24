@@ -1458,47 +1458,75 @@ body {
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
 }
 
-.pos-quick-accounts-section {
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 10px;
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.pos-quick-label {
-  font-size: 0.72rem;
+/* RBAC Badges & Role Indicators */
+.badge-superadmin {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+  color: #ffffff !important;
   font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
-.pos-quick-chips {
-  display: flex;
-  gap: 0.5rem;
+.badge-owner {
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+  font-weight: 700;
+  border: 1px solid #a7f3d0;
 }
 
-.pos-quick-btn {
-  flex: 1;
-  padding: 0.45rem 0.5rem;
+.badge-manager {
+  background: #f0fdf4 !important;
+  color: #15803d !important;
+  font-weight: 700;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-kasir {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  font-weight: 700;
+  border: 1px solid #bfdbfe;
+}
+
+/* Multi-Tenant Topbar Selectors */
+.topbar-tenant-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.72rem;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 99px;
+  padding: 4px 12px;
   color: #334155;
-  cursor: pointer;
-  text-align: left;
-  line-height: 1.3;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.pos-quick-btn:hover {
-  border-color: var(--primary);
-  background: #f5f3ff;
-  color: var(--primary-focus);
+.topbar-tenant-selector:hover {
+  border-color: #6366f1;
+}
+
+.tenant-select {
+  border: none;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1e1b4b;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+
+.store-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 99px;
 }
 
 .pos-btn-clean-submit {

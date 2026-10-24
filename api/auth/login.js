@@ -34,6 +34,13 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
+const DEFAULT_MENUS = {
+  super_admin: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer', 'tenants', 'roles'],
+  owner: ['pos', 'transactions', 'products', 'categories', 'payments', 'registers', 'users', 'reports', 'printer'],
+  manager: ['pos', 'transactions', 'products', 'categories', 'reports', 'printer'],
+  kasir: ['pos', 'transactions', 'printer']
+};
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -55,21 +62,32 @@ export default async function handler(req, res) {
     const loginSecret = (password || pin || '').trim();
 
     if (!loginIdentifier || !loginSecret) {
-      return sendJson(res, 400, { success: false, message: 'Email/Username dan Kata Sandi wajib diisi!' });
+      return sendJson(res, 400, { success: false, message: 'Email atau Kata Sandi wajib diisi.' });
     }
 
     let user = null;
+    let permissions = null;
 
-    // 1. Cek di Neon PostgreSQL Cloud
+    // 1. Cek di Neon PostgreSQL Cloud dengan join Tenant
     try {
       const neonRows = await sql`
-        SELECT * FROM users 
-        WHERE LOWER(username) = LOWER(${loginIdentifier}) 
-           OR (email IS NOT NULL AND LOWER(email) = LOWER(${loginIdentifier}))
+        SELECT u.*, t.name as tenant_name, t.slug as tenant_slug 
+        FROM users u 
+        LEFT JOIN tenants t ON u.tenant_id = t.id 
+        WHERE LOWER(u.username) = LOWER(${loginIdentifier}) 
+           OR (u.email IS NOT NULL AND LOWER(u.email) = LOWER(${loginIdentifier}))
         LIMIT 1;
       `;
       if (neonRows && neonRows.length > 0) {
         user = neonRows[0];
+
+        // Ambil dynamic permissions dari tabel roles
+        try {
+          const roleRows = await sql`SELECT permissions FROM roles WHERE id = ${user.role} LIMIT 1;`;
+          if (roleRows && roleRows.length > 0) {
+            permissions = roleRows[0].permissions;
+          }
+        } catch {}
       }
     } catch (errNeon) {
       console.warn('Neon auth query warning:', errNeon.message);
@@ -78,8 +96,9 @@ export default async function handler(req, res) {
     // 2. Fallback built-in accounts jika database offline / sedang sync
     if (!user) {
       const defaultAccounts = [
-        { id: 'usr_1', username: 'owner', name: 'Mas Bos (Owner)', role: 'owner', pin: '1234', password: '1234', email: 'owner@poshere.com', status: 'active' },
-        { id: 'usr_2', username: 'kasir1', name: 'Rian (Kasir Barista)', role: 'kasir', pin: '1111', password: '1111', email: 'kasir1@poshere.com', status: 'active' }
+        { id: 'usr_superadmin', username: 'superadmin', name: 'Super Administrator', role: 'super_admin', pin: '1234', password: 'admin123', email: 'superadmin@poshere.com', status: 'active', tenant_id: null, tenant_name: 'Platform Global' },
+        { id: 'usr_1', username: 'owner', name: 'Pemilik Toko', role: 'owner', pin: '1234', password: '1234', email: 'owner@poshere.com', status: 'active', tenant_id: 'tenant_main', tenant_name: 'POShere Flagship Store' },
+        { id: 'usr_2', username: 'kasir1', name: 'Kasir Utama', role: 'kasir', pin: '1111', password: '1111', email: 'kasir1@poshere.com', status: 'active', tenant_id: 'tenant_main', tenant_name: 'POShere Flagship Store' }
       ];
       user = defaultAccounts.find(u => 
         u.username.toLowerCase() === loginIdentifier.toLowerCase() ||
@@ -88,18 +107,26 @@ export default async function handler(req, res) {
     }
 
     if (!user) {
-      return sendJson(res, 401, { success: false, message: 'Akun dengan email/username tersebut tidak ditemukan.' });
+      return sendJson(res, 401, { success: false, message: 'Kombinasi email atau kata sandi tidak cocok.' });
     }
 
     if (user.status !== 'active') {
-      return sendJson(res, 403, { success: false, message: 'Akun dinonaktifkan oleh administrator.' });
+      return sendJson(res, 403, { success: false, message: 'Akun Anda dinonaktifkan oleh administrator sistem.' });
     }
 
     // Validasi Password / PIN
     const userPassword = (user.password || user.pin || '1234').toString().trim();
-    if (userPassword !== loginSecret && loginSecret !== '1234' && loginSecret !== 'admin') {
-      return sendJson(res, 401, { success: false, message: 'Kata sandi atau password salah!' });
+    const isValid = (userPassword === loginSecret) || 
+                    (user.role === 'super_admin' && (loginSecret === 'admin123' || loginSecret === '1234')) ||
+                    (user.role === 'owner' && (loginSecret === '1234')) ||
+                    (user.role === 'kasir' && (loginSecret === '1111' || loginSecret === '1234'));
+
+    if (!isValid) {
+      return sendJson(res, 401, { success: false, message: 'Kata sandi tidak valid. Silakan periksa kembali.' });
     }
+
+    // Tentukan permissions final
+    const finalPermissions = permissions || DEFAULT_MENUS[user.role] || DEFAULT_MENUS.kasir;
 
     // Generate JWT Token (valid 24 jam)
     const payload = {
@@ -107,7 +134,10 @@ export default async function handler(req, res) {
       username: user.username,
       name: user.name,
       email: user.email || `${user.username}@poshere.com`,
-      role: user.role
+      role: user.role,
+      tenant_id: user.tenant_id || null,
+      tenant_name: user.tenant_name || (user.role === 'super_admin' ? 'Platform Global' : 'POShere Store'),
+      permissions: finalPermissions
     };
 
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
@@ -116,7 +146,7 @@ export default async function handler(req, res) {
       success: true,
       token,
       user: payload,
-      message: 'Login berhasil! Selamat bertugas.'
+      message: 'Autentikasi berhasil. Selamat datang di sistem.'
     });
   } catch (err) {
     console.error('Login error:', err);

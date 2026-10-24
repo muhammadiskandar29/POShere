@@ -10,8 +10,9 @@ function getLocalStore() {
   }
   const defaultData = {
     users: [
-      { id: 'usr_1', username: 'owner', name: 'Mas Bos (Owner)', role: 'owner', pin: '1234', status: 'active' },
-      { id: 'usr_2', username: 'kasir1', name: 'Rian (Kasir Barista)', role: 'kasir', pin: '1111', status: 'active' }
+      { id: 'usr_superadmin', username: 'superadmin', name: 'Super Administrator', role: 'super_admin', pin: '1234', status: 'active' },
+      { id: 'usr_1', username: 'owner', name: 'Pemilik Toko', role: 'owner', pin: '1234', status: 'active' },
+      { id: 'usr_2', username: 'kasir1', name: 'Kasir Utama', role: 'kasir', pin: '1111', status: 'active' }
     ],
     categories: [
       { id: 'cat_coffee', name: 'Espresso & Coffee', icon: 'coffee' }

@@ -3,7 +3,7 @@ import { sql } from '../db.js';
 function sendJson(res, statusCode, data) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-tenant-id');
 
   if (typeof res.status === 'function') {
     return res.status(statusCode).json(data);
@@ -17,23 +17,49 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-tenant-id');
     if (typeof res.status === 'function') return res.status(200).end();
     res.statusCode = 200;
     return res.end();
   }
 
   try {
-    const categories = await sql`SELECT * FROM categories ORDER BY name ASC`;
-    const products = await sql`SELECT * FROM products ORDER BY name ASC`;
-    const users = await sql`SELECT * FROM users ORDER BY name ASC`;
-    const payment_methods = await sql`SELECT * FROM payment_methods ORDER BY name ASC`;
-    const cash_registers = await sql`SELECT * FROM cash_registers ORDER BY name ASC`;
-    const transactions = await sql`SELECT * FROM transactions ORDER BY created_at DESC`;
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const requestedTenantId = url.searchParams.get('tenant_id') || req.headers['x-tenant-id'] || null;
+
+    // Fetch Tenants & Roles
+    let tenants = [];
+    let roles = [];
+    try {
+      tenants = await sql`SELECT * FROM tenants ORDER BY created_at ASC;`;
+      roles = await sql`SELECT * FROM roles ORDER BY created_at ASC;`;
+    } catch (e) {
+      console.warn('Tenants or Roles table warning:', e.message);
+    }
+
+    let categories, products, users, payment_methods, cash_registers, transactions;
+
+    if (requestedTenantId && requestedTenantId !== 'all') {
+      categories = await sql`SELECT * FROM categories WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
+      products = await sql`SELECT * FROM products WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
+      users = await sql`SELECT id, username, name, role, email, status, tenant_id, created_at FROM users WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
+      payment_methods = await sql`SELECT * FROM payment_methods WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
+      cash_registers = await sql`SELECT * FROM cash_registers WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY name ASC;`;
+      transactions = await sql`SELECT * FROM transactions WHERE tenant_id = ${requestedTenantId} OR tenant_id IS NULL ORDER BY created_at DESC;`;
+    } else {
+      categories = await sql`SELECT * FROM categories ORDER BY name ASC;`;
+      products = await sql`SELECT * FROM products ORDER BY name ASC;`;
+      users = await sql`SELECT id, username, name, role, email, status, tenant_id, created_at FROM users ORDER BY name ASC;`;
+      payment_methods = await sql`SELECT * FROM payment_methods ORDER BY name ASC;`;
+      cash_registers = await sql`SELECT * FROM cash_registers ORDER BY name ASC;`;
+      transactions = await sql`SELECT * FROM transactions ORDER BY created_at DESC;`;
+    }
 
     return sendJson(res, 200, {
       success: true,
       data: {
+        tenants,
+        roles,
         categories,
         products: products.map(p => ({
           ...p,
