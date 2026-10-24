@@ -1884,3 +1884,270 @@ body {
     border-radius: 16px;
   }
 }
+
+/* ==========================================================================
+   MODERN CUSTOM CONFIRMATION & ALERT DIALOG MODAL (POPUP)
+   ========================================================================== */
+.pos-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: posDialogFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.pos-dialog-backdrop.pos-dialog-closing {
+  animation: posDialogFadeOut 0.15s ease-out forwards;
+}
+
+.pos-dialog-card {
+  background: #ffffff;
+  width: 100%;
+  max-width: 430px;
+  border-radius: 22px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(226, 232, 240, 0.9);
+  padding: 2.25rem 2rem 1.85rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  animation: posDialogScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.pos-dialog-backdrop.pos-dialog-closing .pos-dialog-card {
+  animation: posDialogScaleDown 0.15s ease-out forwards;
+}
+
+.pos-dialog-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  transition: transform 0.2s ease;
+}
+
+.pos-dialog-icon-wrap.danger {
+  background: #fee2e2;
+  color: #ef4444;
+  box-shadow: 0 0 0 8px #fef2f2;
+}
+
+.pos-dialog-icon-wrap.warning {
+  background: #fef3c7;
+  color: #d97706;
+  box-shadow: 0 0 0 8px #fffbeb;
+}
+
+.pos-dialog-icon-wrap.info {
+  background: #e0e7ff;
+  color: #4f46e5;
+  box-shadow: 0 0 0 8px #eef2ff;
+}
+
+.pos-dialog-icon-wrap.success {
+  background: #d1fae5;
+  color: #059669;
+  box-shadow: 0 0 0 8px #ecfdf5;
+}
+
+.pos-dialog-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 0.65rem 0;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.pos-dialog-message {
+  font-size: 0.92rem;
+  color: #64748b;
+  line-height: 1.6;
+  margin-bottom: 1.75rem;
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.pos-dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.pos-dialog-btn {
+  flex: 1;
+  padding: 0.85rem 1.25rem;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.pos-dialog-btn-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.pos-dialog-btn-cancel:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.pos-dialog-btn-confirm-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+}
+
+.pos-dialog-btn-confirm-danger:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.45);
+}
+
+.pos-dialog-btn-confirm-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.pos-dialog-btn-confirm-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
+}
+
+.pos-dialog-btn-confirm-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.pos-dialog-btn-confirm-success:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.45);
+}
+
+@keyframes posDialogFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes posDialogFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes posDialogScaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes posDialogScaleDown {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+}
+
+/* ==========================================================================
+   TOAST NOTIFICATION CONTAINER & ITEMS
+   ========================================================================== */
+.pos-toast-container {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  pointer-events: none;
+}
+
+.pos-toast-item {
+  pointer-events: auto;
+  min-width: 300px;
+  max-width: 420px;
+  background: #ffffff;
+  color: #1e293b;
+  border-radius: 14px;
+  padding: 0.85rem 1.15rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  animation: posToastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: all 0.25s ease;
+}
+
+.pos-toast-item.pos-toast-closing {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.pos-toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pos-toast-icon.success { color: #10b981; }
+.pos-toast-icon.danger, .pos-toast-icon.error { color: #ef4444; }
+.pos-toast-icon.warning { color: #f59e0b; }
+.pos-toast-icon.info { color: #3b82f6; }
+
+.pos-toast-text {
+  flex: 1;
+  line-height: 1.45;
+}
+
+.pos-toast-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.pos-toast-close:hover {
+  color: #475569;
+}
+
+@keyframes posToastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

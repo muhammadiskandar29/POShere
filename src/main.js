@@ -6,6 +6,7 @@ import { dbService } from './utils/dbService.js';
 import { getSupabaseConfig, saveSupabaseConfig } from './utils/supabase.js';
 import { printerService } from './utils/printerService.js';
 import { getIcon } from './utils/icons.js';
+import { showConfirmDialog, showAlertDialog, showToast, showPromptDialog } from './utils/dialog.js';
 
 // Application State
 const state = {
@@ -189,13 +190,13 @@ async function loadAllData() {
 // Cart Handlers
 function addToCart(product) {
   if (product.stock <= 0) {
-    alert(`Stok "${product.name}" telah habis!`);
+    showToast(`Stok "${product.name}" telah habis!`, 'danger');
     return;
   }
   const existing = state.cart.find(it => it.product_id === product.id);
   if (existing) {
     if (existing.quantity >= product.stock) {
-      alert(`Stok hanya tersedia ${product.stock}`);
+      showToast(`Stok "${product.name}" hanya tersedia ${product.stock} pcs`, 'warning');
       return;
     }
     existing.quantity += 1;
@@ -224,7 +225,7 @@ function updateCartQty(productId, delta) {
     state.cart = state.cart.filter(it => it.product_id !== productId);
   } else {
     if (product && newQty > product.stock) {
-      alert(`Maksimal stok tersedia adalah ${product.stock}`);
+      showToast(`Maksimal stok tersedia adalah ${product.stock} pcs`, 'warning');
       return;
     }
     item.quantity = newQty;
@@ -233,8 +234,17 @@ function updateCartQty(productId, delta) {
   renderApp();
 }
 
-function clearCart() {
-  if (confirm('Kosongkan keranjang pesanan?')) {
+async function clearCart() {
+  if (state.cart.length === 0) return;
+  const confirmed = await showConfirmDialog({
+    title: 'Kosongkan Pesanan',
+    message: 'Apakah Anda yakin ingin mengosongkan semua item di keranjang belanja?',
+    confirmText: 'Ya, Kosongkan',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (confirmed) {
     state.cart = [];
     renderApp();
   }
@@ -2679,7 +2689,11 @@ window.processPaymentSubmit = async function() {
   if (method && method.type === 'cash') {
     paidAmount = Number(document.getElementById('checkout-paid-amount').value) || grandTotal;
     if (paidAmount < grandTotal) {
-      alert('Uang yang dibayarkan kurang dari total pesanan!');
+      await showAlertDialog({
+        title: 'Nominal Bayar Kurang',
+        message: `Uang tunai yang dibayarkan kurang dari total tagihan pesanan!\n\nTotal: ${formatRupiah(grandTotal)}\nDibayar: ${formatRupiah(paidAmount)}`,
+        type: 'warning'
+      });
       return;
     }
   }
@@ -2724,7 +2738,11 @@ window.processPaymentSubmit = async function() {
     await loadAllData();
     openModal('receipt', savedTrx || payload);
   } catch (err) {
-    alert('Terjadi kesalahan saat menyimpan transaksi: ' + err.message);
+    await showAlertDialog({
+      title: 'Gagal Menyimpan Transaksi',
+      message: 'Terjadi kesalahan saat memproses transaksi: ' + err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -2777,7 +2795,11 @@ window.saveHoldOrder = async function(event) {
     await loadAllData();
     renderApp();
   } catch (err) {
-    alert('Gagal menyimpan hold order: ' + err.message);
+    await showAlertDialog({
+      title: 'Gagal Menyimpan Open Bill',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -2800,8 +2822,15 @@ window.recallHoldOrder = function(holdId) {
   renderApp();
 };
 
-window.cancelEditingHoldOrder = function() {
-  if (confirm('Yakin ingin keluar dari pengeditan Open Bill ini? Perubahan di keranjang akan dibersihkan.')) {
+window.cancelEditingHoldOrder = async function() {
+  const confirmed = await showConfirmDialog({
+    title: 'Keluar Edit Open Bill',
+    message: 'Yakin ingin keluar dari pengeditan Open Bill ini? Perubahan di keranjang akan dibersihkan.',
+    confirmText: 'Ya, Keluar',
+    cancelText: 'Lanjut Edit',
+    type: 'warning'
+  });
+  if (confirmed) {
     state.cart = [];
     state.activeHoldTransactionId = null;
     state.cartCustomerName = '';
@@ -2811,7 +2840,15 @@ window.cancelEditingHoldOrder = function() {
 };
 
 window.deleteHoldOrder = async function(holdId) {
-  if (confirm('Apakah Anda yakin ingin membatalkan dan menghapus pesanan hold ini?')) {
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus Pesanan Hold',
+    message: 'Apakah Anda yakin ingin membatalkan dan menghapus pesanan hold (Open Bill) ini?',
+    confirmText: 'Ya, Hapus Open Bill',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (confirmed) {
     await dbService.deleteTransaction(holdId);
     if (state.activeHoldTransactionId === holdId) {
       state.cart = [];
@@ -2821,6 +2858,7 @@ window.deleteHoldOrder = async function(holdId) {
     }
     await loadAllData();
     openModal('hold_orders');
+    showToast('Pesanan hold berhasil dihapus', 'success');
   }
 };
 
@@ -2838,12 +2876,25 @@ window.cancelCompletedTransaction = async function(trxId) {
   const trx = state.transactions.find(t => t.id === trxId);
   if (!trx) return;
 
-  const reason = prompt(`Masukkan alasan pembatalan transaksi ${trx.invoice_number}:`, 'Pembatalan oleh Pelanggan / Kesalahan Input');
-  if (reason === null) return; // user klik cancel di prompt
+  const reason = await showPromptDialog({
+    title: 'Alasan Pembatalan Transaksi',
+    message: `Masukkan alasan pembatalan untuk invoice: ${trx.invoice_number}`,
+    defaultValue: 'Pembatalan oleh Pelanggan / Kesalahan Input',
+    placeholder: 'Contoh: Pelanggan ganti pesanan',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal'
+  });
+  if (!reason) return;
 
-  if (!confirm(`Konfirmasi Batalkan Transaksi:\n\n• Invoice: ${trx.invoice_number}\n• Total: ${formatRupiah(trx.grand_total)}\n• Alasan: ${reason}\n\nStok produk yang terjual akan otomatis dikembalikan ke etalase.`)) {
-    return;
-  }
+  const confirmed = await showConfirmDialog({
+    title: 'Konfirmasi Batalkan Transaksi',
+    message: `• Invoice: ${trx.invoice_number}\n• Total: ${formatRupiah(trx.grand_total)}\n• Alasan: ${reason}\n\nStok produk yang terjual akan otomatis dikembalikan ke etalase toko.`,
+    confirmText: 'Ya, Batalkan Transaksi',
+    cancelText: 'Kembali',
+    type: 'danger',
+    icon: 'alert-triangle'
+  });
+  if (!confirmed) return;
 
   try {
     // 1. Kembalikan stok untuk tiap produk yang dibeli
@@ -2866,9 +2917,17 @@ window.cancelCompletedTransaction = async function(trxId) {
     }
     await loadAllData();
     renderApp();
-    alert(`Transaksi ${trx.invoice_number} berhasil DIBATALKAN dan stok barang telah dikembalikan!`);
+    await showAlertDialog({
+      title: 'Transaksi Berhasil Dibatalkan',
+      message: `Transaksi ${trx.invoice_number} berhasil DIBATALKAN dan stok barang telah dikembalikan!`,
+      type: 'success'
+    });
   } catch (err) {
-    alert('Gagal membatalkan transaksi: ' + err.message);
+    await showAlertDialog({
+      title: 'Gagal Membatalkan Transaksi',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -2902,20 +2961,31 @@ window.syncDataToNeonServer = async function(isSilent = false) {
     const result = await res.json();
     if (result.success) {
       if (!isSilent) {
-        alert(`SUKSES SINKRONISASI KE NEON POSTGRESQL CLOUD!\n\n` +
-              `• ${result.synced?.products || 0} Produk\n` +
-              `• ${result.synced?.categories || 0} Kategori\n` +
-              `• ${result.synced?.payment_methods || 0} Metode Bayar\n` +
-              `• ${result.synced?.users || 0} User Kasir\n` +
-              `• ${result.synced?.transactions || 0} Transaksi\n\n` +
-              `Data telah tersimpan di Neon Cloud PostgreSQL Server!`);
+        await showAlertDialog({
+          title: 'Sinkronisasi Cloud Berhasil',
+          message: `Data berhasil disimpan ke Neon Cloud PostgreSQL Server!\n\n` +
+                `• ${result.synced?.products || 0} Produk\n` +
+                `• ${result.synced?.categories || 0} Kategori\n` +
+                `• ${result.synced?.payment_methods || 0} Metode Bayar\n` +
+                `• ${result.synced?.users || 0} User Kasir\n` +
+                `• ${result.synced?.transactions || 0} Transaksi`,
+          type: 'success'
+        });
       }
     } else if (!isSilent) {
-      alert('Gagal sync ke Neon Server: ' + (result.error || result.message));
+      await showAlertDialog({
+        title: 'Gagal Sinkronisasi',
+        message: 'Gagal sync ke Neon Server: ' + (result.error || result.message),
+        type: 'danger'
+      });
     }
   } catch (err) {
     if (!isSilent) {
-      alert('Error koneksi ke Neon Server: ' + err.message);
+      await showAlertDialog({
+        title: 'Error Koneksi Neon Server',
+        message: err.message,
+        type: 'danger'
+      });
     }
   }
 };
@@ -2929,12 +2999,24 @@ window.pullDataFromNeonServer = async function() {
       localStorage.setItem('poshere_local_db', JSON.stringify(data));
       await loadAllData();
       renderApp();
-      alert(`Berhasil menarik data dari Neon PostgreSQL Cloud Server:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`);
+      await showAlertDialog({
+        title: 'Tarik Data Cloud Berhasil',
+        message: `Berhasil menarik data dari Neon PostgreSQL Cloud Server:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`,
+        type: 'success'
+      });
     } else {
-      alert('Gagal mengambil data dari Neon Server: ' + (result.error || result.message));
+      await showAlertDialog({
+        title: 'Gagal Ambil Data',
+        message: 'Gagal mengambil data dari Neon Server: ' + (result.error || result.message),
+        type: 'danger'
+      });
     }
   } catch (err) {
-    alert('Error koneksi ke Neon Server: ' + err.message);
+    await showAlertDialog({
+      title: 'Error Koneksi Server',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -2964,18 +3046,30 @@ window.syncLocalStorageToMySQL = async function() {
 
     const result = await res.json();
     if (result.success) {
-      alert(`SUKSES MASUKIN KE MYSQL!\n\n` +
-            `• ${result.synced.products} Produk\n` +
-            `• ${result.synced.categories} Kategori\n` +
-            `• ${result.synced.payment_methods} Metode Bayar\n` +
-            `• ${result.synced.users} User Kasir\n` +
-            `• ${result.synced.transactions} Transaksi\n\n` +
-            `Data sudah masuk ke database "poshere" di MySQL XAMPP (phpMyAdmin)!`);
+      await showAlertDialog({
+        title: 'Sync ke MySQL Berhasil',
+        message: `SUKSES MASUKIN KE MYSQL!\n\n` +
+              `• ${result.synced.products} Produk\n` +
+              `• ${result.synced.categories} Kategori\n` +
+              `• ${result.synced.payment_methods} Metode Bayar\n` +
+              `• ${result.synced.users} User Kasir\n` +
+              `• ${result.synced.transactions} Transaksi\n\n` +
+              `Data sudah masuk ke database "poshere" di MySQL XAMPP (phpMyAdmin)!`,
+        type: 'success'
+      });
     } else {
-      alert('Gagal sync ke MySQL: ' + (result.error || result.message));
+      await showAlertDialog({
+        title: 'Gagal Sinkronisasi MySQL',
+        message: result.error || result.message,
+        type: 'danger'
+      });
     }
   } catch (err) {
-    alert('Error koneksi ke MySQL: ' + err.message);
+    await showAlertDialog({
+      title: 'Error Koneksi MySQL',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -2988,12 +3082,24 @@ window.pullDataFromMySQL = async function() {
       localStorage.setItem('poshere_local_db', JSON.stringify(data));
       await loadAllData();
       renderApp();
-      alert(`Berhasil menarik data dari MySQL:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`);
+      await showAlertDialog({
+        title: 'Tarik Data MySQL Berhasil',
+        message: `Berhasil menarik data dari MySQL:\n• ${data.products.length} Produk\n• ${data.categories.length} Kategori\n• ${data.transactions.length} Transaksi`,
+        type: 'success'
+      });
     } else {
-      alert('Gagal mengambil data dari MySQL: ' + (result.error || result.message));
+      await showAlertDialog({
+        title: 'Gagal Ambil Data MySQL',
+        message: result.error || result.message,
+        type: 'danger'
+      });
     }
   } catch (err) {
-    alert('Error koneksi ke MySQL: ' + err.message);
+    await showAlertDialog({
+      title: 'Error Koneksi MySQL',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -3003,7 +3109,7 @@ window.handleSaveSupabaseConfig = async function(e) {
   const url = document.getElementById('cfg-supabase-url').value;
   const key = document.getElementById('cfg-supabase-key').value;
   saveSupabaseConfig(url, key);
-  alert('Konfigurasi Supabase berhasil disimpan! Memuat ulang data dari PostgreSQL Supabase...');
+  showToast('Konfigurasi Supabase berhasil disimpan! Memuat ulang...', 'success');
   await loadAllData();
   renderApp();
 };
@@ -3011,9 +3117,17 @@ window.handleSaveSupabaseConfig = async function(e) {
 window.testSupabaseConnection = async function() {
   try {
     const prods = await dbService.getProducts();
-    alert(`Koneksi database berhasil! Ditemukan ${prods.length} produk di database.`);
+    await showAlertDialog({
+      title: 'Koneksi Database Berhasil',
+      message: `Koneksi database berhasil! Ditemukan ${prods.length} produk di database.`,
+      type: 'success'
+    });
   } catch (err) {
-    alert('Gagal terkoneksi ke Supabase: ' + err.message);
+    await showAlertDialog({
+      title: 'Gagal Terkoneksi ke Supabase',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -3029,13 +3143,19 @@ window.editCategory = function(id) {
 
 window.deleteCategory = async function(id) {
   const count = (state.products || []).filter(p => p.category_id === id).length;
-  if (count > 0) {
-    if (!confirm(`Ada ${count} produk yang menggunakan kategori ini. Tetap ingin menghapus?`)) {
-      return;
-    }
-  } else if (!confirm('Yakin ingin menghapus kategori ini?')) {
-    return;
-  }
+  const msg = count > 0
+    ? `Ada ${count} produk yang menggunakan kategori ini. Tetap ingin menghapus kategori?`
+    : 'Apakah Anda yakin ingin menghapus kategori ini?';
+
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus Kategori',
+    message: msg,
+    confirmText: 'Ya, Hapus Kategori',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (!confirmed) return;
 
   await dbService.deleteCategory(id);
   if (state.selectedCategory === id) {
@@ -3043,6 +3163,7 @@ window.deleteCategory = async function(id) {
   }
   await loadAllData();
   renderApp();
+  showToast('Kategori berhasil dihapus', 'success');
 };
 
 window.saveCategoryForm = async function(event, id) {
@@ -3083,13 +3204,22 @@ window.editProduct = function(id) {
 };
 
 window.deleteProduct = async function(id) {
-  if (confirm('Yakin ingin menghapus produk ini?')) {
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus Produk',
+    message: 'Apakah Anda yakin ingin menghapus produk ini dari etalase toko?',
+    confirmText: 'Ya, Hapus Produk',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (confirmed) {
     await dbService.deleteProduct(id);
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
     }
     await loadAllData();
     renderApp();
+    showToast('Produk berhasil dihapus', 'success');
   }
 };
 
@@ -3101,8 +3231,13 @@ window.handleProductImageUpload = async function(input) {
     const uploadedPath = await uploadBase64Image(base64, file.name);
     document.getElementById('pform-image-path').value = uploadedPath;
     document.getElementById('pform-preview').innerHTML = `<img src="${uploadedPath}" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover;"/>`;
+    showToast('Gambar produk berhasil diunggah!', 'success');
   } catch (err) {
-    alert('Gagal mengupload gambar: ' + err.message);
+    await showAlertDialog({
+      title: 'Gagal Upload Gambar',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -3144,13 +3279,22 @@ window.editPayment = function(id) {
 };
 
 window.deletePayment = async function(id) {
-  if (confirm('Yakin ingin menghapus metode pembayaran ini?')) {
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus Metode Pembayaran',
+    message: 'Apakah Anda yakin ingin menghapus metode pembayaran ini?',
+    confirmText: 'Ya, Hapus Metode',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (confirmed) {
     await dbService.deletePaymentMethod(id);
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
     }
     await loadAllData();
     renderApp();
+    showToast('Metode pembayaran berhasil dihapus', 'success');
   }
 };
 
@@ -3177,12 +3321,20 @@ window.handleQrisImageUpload = async function(input) {
       if (parsed.merchantName) {
         document.getElementById('payform-info').value = `Merchant: ${parsed.merchantName} (${parsed.merchantCity || 'ID'})`;
       }
-      alert(`Berhasil membaca string QRIS dari gambar!\nMerchant: ${parsed.merchantName || 'Terdeteksi'}`);
+      await showAlertDialog({
+        title: 'QRIS Berhasil Terbaca',
+        message: `String data QRIS berhasil dideteksi!\n\nMerchant: ${parsed.merchantName || 'Terdeteksi'}`,
+        type: 'success'
+      });
     } else {
-      alert('Gambar berhasil diunggah ke public/uploads. Anda dapat memasukkan string QRIS secara manual jika diperlukan.');
+      showToast('Gambar diunggah. Silakan input string QRIS jika diperlukan.', 'info');
     }
   } catch (err) {
-    alert('Error membaca atau mengunggah gambar QRIS: ' + err.message);
+    await showAlertDialog({
+      title: 'Gagal Membaca QRIS',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -3209,6 +3361,7 @@ window.savePaymentForm = async function(event, id) {
   }
   await loadAllData();
   renderApp();
+  showToast('Metode pembayaran berhasil disimpan', 'success');
 };
 
 // Master User Actions
@@ -3222,13 +3375,22 @@ window.editUser = function(id) {
 };
 
 window.deleteUser = async function(id) {
-  if (confirm('Yakin ingin menghapus user ini?')) {
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus User Kasir',
+    message: 'Apakah Anda yakin ingin menghapus akses akun staf kasir ini?',
+    confirmText: 'Ya, Hapus User',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (confirmed) {
     await dbService.deleteUser(id);
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
     }
     await loadAllData();
     renderApp();
+    showToast('User berhasil dihapus', 'success');
   }
 };
 
@@ -3299,7 +3461,7 @@ window.saveTenantSubmit = async function(event) {
   state.modalState = { isOpen: false, type: null, data: null };
   await loadAllData();
   renderApp();
-  alert(`Toko "${name}" berhasil disimpan!`);
+  showToast(`Toko "${name}" berhasil disimpan!`, 'success');
 };
 
 // RBAC Role Action Handlers
@@ -3323,41 +3485,69 @@ window.saveRolePermissions = async function() {
       body: JSON.stringify({ roles: state.roles })
     });
     if (res.ok) {
-      alert('Konfigurasi Hak Akses Role (RBAC) berhasil disimpan dan diperbarui di Cloud Database!');
+      await showAlertDialog({
+        title: 'Hak Akses Disimpan',
+        message: 'Konfigurasi Hak Akses Role (RBAC) berhasil disimpan dan diperbarui di Cloud Database!',
+        type: 'success'
+      });
       await loadAllData();
       renderApp();
     } else {
-      alert('Gagal menyimpan izin akses ke server.');
+      await showAlertDialog({
+        title: 'Gagal Menyimpan Role',
+        message: 'Gagal menyimpan izin akses ke server database.',
+        type: 'danger'
+      });
     }
   } catch (err) {
     console.error('Save roles error:', err);
-    alert('Terjadi kesalahan saat menyimpan hak akses.');
+    await showAlertDialog({
+      title: 'Terjadi Kesalahan',
+      message: 'Terjadi kesalahan saat menyimpan hak akses: ' + err.message,
+      type: 'danger'
+    });
   }
 };
 
 // Thermal Printer Window Actions
 window.setPrinterWidth = function(width) {
   printerService.paperWidth = Number(width);
-  alert(`Lebar kertas diset ke ${width}mm`);
+  showToast(`Lebar kertas diset ke ${width}mm`, 'info');
 };
 
 window.connectBluetoothPrinter = async function() {
   try {
     const res = await printerService.connectBluetooth();
-    alert(`Berhasil terhubung dengan printer Bluetooth: ${res.name}`);
+    await showAlertDialog({
+      title: 'Printer Bluetooth Terhubung',
+      message: `Berhasil terhubung dengan printer Bluetooth: ${res.name}`,
+      type: 'success'
+    });
     renderApp();
   } catch (err) {
-    alert(`Gagal konek Bluetooth: ${err.message}`);
+    await showAlertDialog({
+      title: 'Gagal Konek Bluetooth',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
 window.connectUsbPrinter = async function() {
   try {
     const res = await printerService.connectUsbSerial();
-    alert(`Berhasil terhubung dengan printer USB Serial: ${res.name}`);
+    await showAlertDialog({
+      title: 'Printer USB Terhubung',
+      message: `Berhasil terhubung dengan printer USB Serial: ${res.name}`,
+      type: 'success'
+    });
     renderApp();
   } catch (err) {
-    alert(`Gagal konek USB Serial: ${err.message}`);
+    await showAlertDialog({
+      title: 'Gagal Konek USB Serial',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -3379,10 +3569,14 @@ window.testPrintThermal = async function() {
   try {
     const result = await printerService.printReceipt(dummyTrx);
     if (result.method !== 'browser_dialog') {
-      alert(`Struk berhasil dikirim ke Thermal Printer (${result.method})!`);
+      showToast(`Struk berhasil dikirim ke Thermal Printer (${result.method})!`, 'success');
     }
   } catch (err) {
-    alert('Error saat mencetak: ' + err.message);
+    await showAlertDialog({
+      title: 'Error Saat Mencetak',
+      message: err.message,
+      type: 'danger'
+    });
   }
 };
 
@@ -3392,10 +3586,14 @@ window.printToThermalPrinter = async function() {
   try {
     const result = await printerService.printReceipt(trx);
     if (result.method !== 'browser_dialog') {
-      alert(`Struk transaksi ${trx.invoice_number} berhasil dicetak ke Thermal Printer!`);
+      showToast(`Struk transaksi ${trx.invoice_number} dicetak ke Thermal Printer!`, 'success');
     }
   } catch (err) {
-    alert('Gagal cetak ke thermal printer: ' + err.message + '\nMenggunakan printer browser standar...');
+    await showAlertDialog({
+      title: 'Thermal Printer Tidak Terjangkau',
+      message: 'Gagal cetak ke thermal printer: ' + err.message + '\n\nSistem akan mengalihkan ke printer browser standar.',
+      type: 'warning'
+    });
     window.print();
   }
 };
@@ -3411,13 +3609,22 @@ window.editRegister = function(id) {
 };
 
 window.deleteRegister = async function(id) {
-  if (confirm('Yakin ingin menghapus stasiun mesin kasir ini?')) {
+  const confirmed = await showConfirmDialog({
+    title: 'Hapus Mesin Kasir',
+    message: 'Apakah Anda yakin ingin menghapus stasiun mesin kasir ini?',
+    confirmText: 'Ya, Hapus Mesin',
+    cancelText: 'Batal',
+    type: 'danger',
+    icon: 'trash'
+  });
+  if (confirmed) {
     await dbService.deleteCashRegister(id);
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
     }
     await loadAllData();
     renderApp();
+    showToast('Mesin kasir berhasil dihapus', 'success');
   }
 };
 
@@ -3487,7 +3694,7 @@ window.customerPrintReceipt = async function() {
   if (printerService.isConnected) {
     try {
       const res = await printerService.printReceipt(currentTrx);
-      alert(`Struk transaksi berhasil dicetak otomatis ke Thermal Printer (${res.method})!`);
+      showToast(`Struk transaksi berhasil dicetak otomatis ke Thermal Printer (${res.method})!`, 'success');
       return;
     } catch (err) {
       console.warn('Gagal cetak otomatis, fallback ke preview struk', err);
@@ -3866,14 +4073,24 @@ window.handleEmailLoginSubmit = async function(event) {
 };
 
 // Logout Handler
-window.handleLogout = function() {
-  if (confirm('Apakah Anda yakin ingin logout dari sistem?')) {
+window.handleLogout = async function() {
+  const confirmed = await showConfirmDialog({
+    title: 'Konfirmasi Keluar',
+    message: 'Apakah Anda yakin ingin logout dari sistem kasir POShere?',
+    confirmText: 'Ya, Logout Sekarang',
+    cancelText: 'Tetap di Sini',
+    type: 'danger',
+    icon: 'log-out'
+  });
+
+  if (confirmed) {
     localStorage.removeItem('poshere_jwt_token');
     localStorage.removeItem('poshere_jwt_user');
     state.auth.isAuthenticated = false;
     state.auth.token = null;
     state.auth.errorMessage = '';
     renderApp();
+    showToast('Berhasil logout dari sistem', 'info');
   }
 };
 
