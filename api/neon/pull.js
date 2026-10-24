@@ -80,6 +80,7 @@ export default async function handler(req, res) {
         })),
         transactions: transactions.map(t => ({
           ...t,
+          status: t.status || t.payment_status || 'completed',
           items: typeof t.items === 'string' ? JSON.parse(t.items || '[]') : (t.items || []),
           subtotal: Number(t.subtotal || 0),
           grand_total: Number(t.grand_total || 0),

@@ -1211,14 +1211,18 @@ function renderTransactionsView() {
                   </td>
                 ` : ''}
                 <td>
-                  <span class="role-badge ${trx.status === 'hold' ? 'badge-hold' : (trx.status === 'cancelled' ? 'badge-owner' : 'badge-kasir')}">
-                    ${trx.status === 'hold' ? 'HOLD' : (trx.status === 'cancelled' ? 'BATAL' : 'SELESAI')}
-                  </span>
+                  ${(trx.status === 'cancelled' || trx.payment_status === 'cancelled') ? `
+                    <span class="role-badge" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-weight: 700; padding: 4px 10px;">DIBATALKAN</span>
+                  ` : (trx.status === 'hold' || trx.payment_status === 'hold') ? `
+                    <span class="role-badge badge-hold" style="padding: 4px 10px;">HOLD</span>
+                  ` : `
+                    <span class="role-badge badge-kasir" style="background: #ecfdf5; color: #059669; font-weight: 700; padding: 4px 10px;">SELESAI</span>
+                  `}
                 </td>
                 <td>${trx.cashier_name}</td>
                 <td>${trx.customer_name || 'Pelanggan'} (${trx.table_number || '-'})</td>
                 <td>
-                  ${trx.status === 'hold' ? `
+                  ${(trx.status === 'hold' || trx.payment_status === 'hold') ? `
                     <span style="font-size: 0.72rem; color: #b45309; font-weight: 600;">Belum Dibayar</span>
                   ` : `
                     <span class="role-badge ${trx.payment_method_name?.toLowerCase().includes('qris') ? 'badge-owner' : 'badge-kasir'}">
@@ -1232,7 +1236,7 @@ function renderTransactionsView() {
                 <td style="font-weight: 800; color: var(--text-main);">${formatRupiah(trx.grand_total)}</td>
                 <td>
                   <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
-                    ${trx.status === 'hold' ? `
+                    ${(trx.status === 'hold' || trx.payment_status === 'hold') ? `
                       <button class="btn btn-primary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="window.recallHoldOrder('${trx.id}'); window.setView('pos');">
                         Lanjutkan
                       </button>
@@ -1243,8 +1247,8 @@ function renderTransactionsView() {
                       <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" onclick="window.viewReceipt('${trx.id}')">
                         Struk
                       </button>
-                      ${trx.status === 'cancelled' ? `
-                        <span style="font-size:0.68rem; color:#ef4444; font-weight:700; padding:2px 6px; background:#fef2f2; border-radius:4px;">DIBATALKAN</span>
+                      ${(trx.status === 'cancelled' || trx.payment_status === 'cancelled') ? `
+                        <span style="font-size: 0.7rem; color: #dc2626; font-weight: 700; padding: 2px 8px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;">Dibatalkan</span>
                       ` : `
                         <button class="btn btn-danger btn-sm" style="padding: 0.25rem 0.45rem; font-size: 0.72rem;" onclick="window.cancelCompletedTransaction('${trx.id}')" title="Batalkan Transaksi & Kembalikan Stok">
                           Batalkan
@@ -2236,14 +2240,6 @@ function renderModal() {
                 <label class="form-label">Nama Kategori *</label>
                 <input type="text" id="catform-name" class="form-control" required value="${cat.name || ''}" placeholder="Misal: Coffee, Non-Coffee, Snack, Bakery, Retail"/>
               </div>
-
-              <div class="form-group">
-                <label class="form-label">Kode Kategori (Opsional)</label>
-                <input type="text" id="catform-id" class="form-control" value="${cat.id || ''}" placeholder="Misal: cat_matcha, cat_snack" ${cat.id ? 'disabled' : ''}/>
-                <small style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">
-                  Dibuat otomatis oleh sistem jika dikosongkan.
-                </small>
-              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
@@ -3136,15 +3132,27 @@ window.cancelCompletedTransaction = async function(trxId) {
       const prod = state.products.find(p => p.id === item.product_id);
       if (prod) {
         const restoredStock = Number(prod.stock || 0) + Number(item.quantity || 0);
+        prod.stock = restoredStock;
+        await saveToNeonServer('products', { ...prod, stock: restoredStock });
         await dbService.updateProduct(prod.id, { stock: restoredStock });
       }
     }
 
-    // 2. Tandai transaksi sebagai cancelled (atau hapus dari rekap)
-    await dbService.updateTransaction(trxId, {
+    // 2. Tandai transaksi sebagai cancelled (Dibatalkan) di database Neon & Local
+    const updatedTrx = {
+      ...trx,
       status: 'cancelled',
-      note: `DIBATALKAN: ${reason} (Oleh ${state.currentUser.name})`
-    });
+      payment_status: 'cancelled',
+      note: `DIBATALKAN: ${reason} (Oleh ${state.currentUser?.name || 'Kasir'})`
+    };
+
+    await saveToNeonServer('transactions', updatedTrx);
+    await dbService.updateTransaction(trxId, updatedTrx);
+
+    const tIdx = (state.transactions || []).findIndex(t => t.id === trxId);
+    if (tIdx >= 0) {
+      state.transactions[tIdx] = updatedTrx;
+    }
 
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
@@ -4420,7 +4428,8 @@ function renderAuthModal() {
         </form>
 
         <div class="pos-clean-footer">
-          <span>POShere Enterprise Cloud POS • Terenkripsi SSL 256-bit</span>
+          <span style="font-weight: 700; color: #334155; font-size: 0.85rem; letter-spacing: -0.01em;">POShere Enterprise</span>
+          <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 600; letter-spacing: 0.04em;">V 1.0.0</span>
         </div>
       </div>
     </div>

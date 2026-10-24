@@ -236,17 +236,19 @@ export default async function handler(req, res) {
 
     // 6. Transactions
     for (const t of transactions) {
+      const trxStatus = t.status || t.payment_status || 'completed';
       await sql`
         INSERT INTO transactions (
           id, invoice_number, cashier_user_id, cashier_name, table_number, customer_name,
-          payment_method_id, payment_method_name, payment_status, items,
+          payment_method_id, payment_method_name, payment_status, status, note, items,
           subtotal, tax_amount, discount_amount, grand_total, paid_amount, change_amount,
           tenant_id
         )
         VALUES (
           ${t.id}, ${t.invoice_number}, ${t.cashier_user_id || ''}, ${t.cashier_name || ''}, 
           ${t.table_number || ''}, ${t.customer_name || ''}, ${t.payment_method_id || ''}, 
-          ${t.payment_method_name || ''}, ${t.payment_status || 'paid'}, 
+          ${t.payment_method_name || ''}, ${t.payment_status || trxStatus}, 
+          ${trxStatus}, ${t.note || ''},
           ${JSON.stringify(t.items || [])}::jsonb,
           ${t.subtotal || 0}, ${t.tax_amount || 0}, ${t.discount_amount || 0}, 
           ${t.grand_total || 0}, ${t.paid_amount || 0}, ${t.change_amount || 0},
@@ -254,6 +256,8 @@ export default async function handler(req, res) {
         )
         ON CONFLICT (id) DO UPDATE SET
           payment_status = EXCLUDED.payment_status,
+          status = EXCLUDED.status,
+          note = EXCLUDED.note,
           items = EXCLUDED.items,
           subtotal = EXCLUDED.subtotal,
           tax_amount = EXCLUDED.tax_amount,

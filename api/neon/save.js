@@ -164,17 +164,19 @@ export default async function handler(req, res) {
           tenant_id = EXCLUDED.tenant_id;
       `;
     } else if (entity === 'transactions') {
+      const trxStatus = data.status || data.payment_status || 'completed';
       await sql`
         INSERT INTO transactions (
           id, invoice_number, cashier_user_id, cashier_name, table_number, customer_name,
-          payment_method_id, payment_method_name, payment_status, items,
+          payment_method_id, payment_method_name, payment_status, status, note, items,
           subtotal, tax_amount, discount_amount, grand_total, paid_amount, change_amount,
           tenant_id
         )
         VALUES (
           ${data.id}, ${data.invoice_number}, ${data.cashier_user_id || ''}, ${data.cashier_name || ''},
           ${data.table_number || ''}, ${data.customer_name || ''}, ${data.payment_method_id || ''},
-          ${data.payment_method_name || ''}, ${data.payment_status || 'paid'},
+          ${data.payment_method_name || ''}, ${data.payment_status || trxStatus},
+          ${trxStatus}, ${data.note || ''},
           ${JSON.stringify(data.items || [])}::jsonb,
           ${Number(data.subtotal) || 0}, ${Number(data.tax_amount) || 0}, ${Number(data.discount_amount) || 0},
           ${Number(data.grand_total) || 0}, ${Number(data.paid_amount) || 0}, ${Number(data.change_amount) || 0},
@@ -182,6 +184,8 @@ export default async function handler(req, res) {
         )
         ON CONFLICT (id) DO UPDATE SET
           payment_status = EXCLUDED.payment_status,
+          status = EXCLUDED.status,
+          note = EXCLUDED.note,
           items = EXCLUDED.items,
           subtotal = EXCLUDED.subtotal,
           tax_amount = EXCLUDED.tax_amount,
