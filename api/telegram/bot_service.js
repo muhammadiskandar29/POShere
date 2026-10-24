@@ -1,8 +1,14 @@
 import { sql } from '../db.js';
+import { canPerformAction, getRoleActionDeniedMessage } from './rbac.js';
+import { executeCreateUser } from './actions/user_actions.js';
+import { executeCreateTenant, executeCreateCategory } from './actions/tenant_actions.js';
+import { executeCreateTransaction } from './actions/pos_actions.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-3.5-flash';
+
+// Keep last 6 message turns per chatId for conversational memory
+const chatSessions = new Map();
 
 function sanitizeReply(text) {
   if (!text) return '';
@@ -14,7 +20,7 @@ function sanitizeReply(text) {
     .trim();
 }
 
-// Helper to send message to Telegram
+// Send standard text message
 export async function sendTelegramMessage(chatId, text, options = {}) {
   const token = TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing in environment.');
@@ -42,7 +48,28 @@ export async function sendTelegramMessage(chatId, text, options = {}) {
   }
 }
 
-// Helper to show typing status
+// Send photo with caption (for QRIS & receipt)
+export async function sendTelegramPhoto(chatId, imageBuffer, caption = '') {
+  const token = TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing in environment.');
+
+  try {
+    const formData = new FormData();
+    formData.append('chat_id', String(chatId));
+    formData.append('caption', sanitizeReply(caption));
+    formData.append('photo', new Blob([imageBuffer], { type: 'image/png' }), 'qris.png');
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: formData
+    });
+    return await res.json();
+  } catch (err) {
+    console.error('sendTelegramPhoto error:', err);
+  }
+}
+
+// Show typing indicator
 export async function sendChatAction(chatId, action = 'typing') {
   const token = TELEGRAM_BOT_TOKEN;
   if (!token) return;
@@ -90,7 +117,7 @@ export async function getStoreContext(user) {
       totalProductsCount = Number(pCount[0]?.count || 0);
     }
 
-    // Fetch Recent Transactions (last 30 transactions)
+    // Fetch Recent Transactions
     let recentTrx = [];
     if (tenantFilter) {
       recentTrx = await sql`
@@ -134,15 +161,12 @@ export async function getStoreContext(user) {
           const val = Number(trx.grand_total) || 0;
           todayTotalSales += val;
 
-          // Payment method
           const pm = trx.payment_method_name || 'Lainnya';
           paymentBreakdown[pm] = (paymentBreakdown[pm] || 0) + val;
 
-          // Cashier
           const cName = trx.cashier_name || 'Kasir';
           cashierBreakdown[cName] = (cashierBreakdown[cName] || 0) + 1;
 
-          // Items
           if (Array.isArray(trx.items)) {
             trx.items.forEach(it => {
               const iName = it.name || 'Produk';
@@ -178,8 +202,133 @@ export async function getStoreContext(user) {
   }
 }
 
-// Generate intelligent AI response via Gemini
-export async function askGemini(user, storeContext, question) {
+// Gemini Tools Specification
+const GEMINI_TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: 'createUser',
+        description: 'Membuat akun pengguna/kasir/manager baru di sistem POS. PENTING: DILARANG memanggil fungsi ini jika salah satu dari 8 parameter berikut belum terisi lengkap oleh pengguna. Jika ada yang belum diisi, tanyakan langsung ke pengguna apa data yang kurang.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING', description: 'Nama lengkap pengguna (wajib)' },
+            username: { type: 'STRING', description: 'Username login POS huruf kecil/angka (wajib)' },
+            telegram_username: { type: 'STRING', description: 'Username Telegram diawali @ (wajib)' },
+            role: { type: 'STRING', description: 'Role akun: kasir, manager, atau owner (wajib)' },
+            tenant_name: { type: 'STRING', description: 'Nama cabang toko penempatan (wajib)' },
+            pin: { type: 'STRING', description: 'PIN kasir 4-6 digit angka (wajib)' },
+            email: { type: 'STRING', description: 'Alamat email aktif (wajib)' },
+            phone: { type: 'STRING', description: 'Nomor HP/WhatsApp aktif (wajib)' }
+          },
+          required: ['name', 'username', 'telegram_username', 'role', 'tenant_name', 'pin', 'email', 'phone']
+        }
+      },
+      {
+        name: 'createTenant',
+        description: 'Membuat tenant atau cabang toko baru. Khusus Super Admin.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING', description: 'Nama tenant/cabang baru' },
+            address: { type: 'STRING', description: 'Alamat lokasi toko' }
+          },
+          required: ['name']
+        }
+      },
+      {
+        name: 'createCategory',
+        description: 'Membuat kategori produk baru di toko.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING', description: 'Nama kategori produk' },
+            tenant_name: { type: 'STRING', description: 'Nama cabang toko' }
+          },
+          required: ['name']
+        }
+      },
+      {
+        name: 'createTransaction',
+        description: 'Membuat transaksi kasir baru untuk pembelian produk. Jika pembayaran QRIS, sistem akan otomatis mengirimkan gambar QRIS Dinamis ke Telegram.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            items: {
+              type: 'ARRAY',
+              description: 'Daftar item belanja',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  name: { type: 'STRING', description: 'Nama produk yang dibeli' },
+                  qty: { type: 'NUMBER', description: 'Jumlah item' }
+                },
+                required: ['name', 'qty']
+              }
+            },
+            payment_method: { type: 'STRING', description: 'Metode bayar: qris atau cash' },
+            customer_name: { type: 'STRING', description: 'Nama pelanggan' },
+            tenant_name: { type: 'STRING', description: 'Nama cabang toko jika operator super admin' }
+          },
+          required: ['items', 'payment_method']
+        }
+      }
+    ]
+  }
+];
+
+// Execute a tool requested by Gemini
+async function handleToolExecution(operatorUser, chatId, functionCall) {
+  const { name, args } = functionCall;
+
+  if (name === 'createUser') {
+    const res = await executeCreateUser(operatorUser, args);
+    if (!res.success) {
+      if (res.missingFields && res.missingFields.length > 0) {
+        return `Data belum lengkap. Mohon lengkapi data berikut terlebih dahulu:\n${res.missingFields.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
+      }
+      return `Gagal membuat akun: ${res.error}`;
+    }
+
+    const u = res.user;
+    return `Akun berhasil dibuat:\n- Nama: ${u.name}\n- Username POS: ${u.username}\n- Telegram: @${u.telegram_username}\n- Role: ${u.role.toUpperCase()}\n- Cabang: ${u.tenant_name}\n- PIN Kasir: ${u.pin}\n- Email: ${u.email}\n- No. HP: ${u.phone}\n- Status: Aktif`;
+  }
+
+  if (name === 'createTenant') {
+    const res = await executeCreateTenant(operatorUser, args);
+    if (!res.success) return `Gagal membuat tenant: ${res.error}`;
+    return `Tenant baru berhasil dibuat:\n- Nama: ${res.tenant.name}\n- Alamat: ${res.tenant.address}\n- ID: ${res.tenant.id}`;
+  }
+
+  if (name === 'createCategory') {
+    const res = await executeCreateCategory(operatorUser, args);
+    if (!res.success) return `Gagal membuat kategori: ${res.error}`;
+    return `Kategori berhasil dibuat:\n- Nama: ${res.category.name}\n- Cabang: ${res.category.tenant_name}`;
+  }
+
+  if (name === 'createTransaction') {
+    const res = await executeCreateTransaction(operatorUser, args);
+    if (!res.success) return `Gagal membuat transaksi: ${res.error}`;
+
+    const t = res.transaction;
+    const itemListStr = t.items.map(it => `- ${it.qty}x ${it.name} (Rp ${it.subtotal.toLocaleString('id-ID')})`).join('\n');
+
+    if (res.isQris && res.qrBuffer) {
+      // Send Photo with Dynamic QRIS
+      const caption = `Invoice: ${t.invoice_number}\nKasir: ${t.cashier_name}\nCabang: ${t.tenant_name}\nPelanggan: ${t.customer_name}\n\nItem Belanja:\n${itemListStr}\n\nTotal Tagihan: Rp ${t.grand_total.toLocaleString('id-ID')}\nMetode: QRIS Dinamis\nStatus: Menunggu Pembayaran\n\nSilakan scan kode QRIS di atas untuk menyelesaikan transaksi.`;
+      await sendTelegramPhoto(chatId, res.qrBuffer, caption);
+      return `Transaksi QRIS ${t.invoice_number} berhasil dibuat dan gambar QRIS sudah dikirimkan di atas.`;
+    }
+
+    // Cash transaction
+    return `Transaksi Tunai Berhasil:\n- Invoice: ${t.invoice_number}\n- Kasir: ${t.cashier_name}\n- Cabang: ${t.tenant_name}\n- Pelanggan: ${t.customer_name}\n\nItem Belanja:\n${itemListStr}\n\nTotal Pembayaran: Rp ${t.grand_total.toLocaleString('id-ID')}\nStatus: Lunas (Selesai)`;
+  }
+
+  return 'Fungsi tidak dikenali.';
+}
+
+// Call Gemini with tools and history
+export async function askGemini(user, storeContext, question, chatId) {
   const apiKey = GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured in .env.');
 
@@ -188,60 +337,66 @@ export async function askGemini(user, storeContext, question) {
 - Tanggal Hari Ini (WIB): ${storeContext.todayStr}
 - Cabang/Tenant Toko: ${storeContext.tenants || 'POShere Flagship Store'}
 - Total Transaksi Hari Ini: ${storeContext.todayTrxCount} (${storeContext.todaySuccessTrxCount} Berhasil, ${storeContext.todayCancelledTrxCount} Dibatalkan)
-- Total Omset / Penjualan Sukses Hari Ini: Rp ${storeContext.todayTotalSales.toLocaleString('id-ID')}
-- Metode Pembayaran Hari Ini: ${Object.entries(storeContext.paymentBreakdown).map(([k, v]) => `${k}: Rp ${Number(v).toLocaleString('id-ID')}`).join(', ') || 'Belum ada transaksi sukses'}
-- Transaksi per Kasir: ${Object.entries(storeContext.cashierBreakdown).map(([k, v]) => `${k}: ${v} transaksi`).join(', ') || 'Belum ada transaksi hari ini'}
-- Produk Terlaris Hari Ini: ${storeContext.topItems.join(', ') || 'Belum ada item terjual hari ini'}
-- Total Katalog Produk: ${storeContext.totalProductsCount} produk
-- Daftar Produk Menipis (Stok <= 10):
+- Total Omset Hari Ini: Rp ${storeContext.todayTotalSales.toLocaleString('id-ID')}
+- Metode Pembayaran: ${Object.entries(storeContext.paymentBreakdown).map(([k, v]) => `${k}: Rp ${Number(v).toLocaleString('id-ID')}`).join(', ') || 'Belum ada transaksi'}
+- Transaksi per Kasir: ${Object.entries(storeContext.cashierBreakdown).map(([k, v]) => `${k}: ${v} trx`).join(', ') || 'Belum ada transaksi'}
+- Produk Terlaris: ${storeContext.topItems.join(', ') || 'Belum ada item terjual'}
+- Katalog Produk: ${storeContext.totalProductsCount} produk
+- Produk Menipis (Stok <= 10):
 ${storeContext.lowStockProducts.length > 0 ? storeContext.lowStockProducts.join('\n') : 'Semua stok produk saat ini aman (di atas 10 unit)'}
-` : 'Data real-time saat ini sedang dimuat ulang.';
+` : '';
 
   const systemInstruction = `
 Kamu adalah asisten bisnis eksekutif untuk sistem kasir POShere.
-Lawan bicaramu adalah pimpinan/manajemen toko (@${user.telegram_username}).
+Lawan bicaramu adalah:
+- Nama: ${user.name}
+- Username Telegram: @${user.telegram_username}
+- Role: ${user.role}
 
-ATURAN FORMAT & KOMUNIKASI (SANGAT KETAT):
-1. LANGSUNG KE INTI:
-   - Jawab secara spesifik apa yang ditanyakan saja.
-   - DILARANG mengulang salam pembuka/formal (seperti "Halo, Super Administrator!", "Senang bisa membantu Anda kembali", dll).
-   - DILARANG membuat kalimat penutup basa-basi (seperti "Ada hal lain yang ingin saya bantu?", "Apakah ada yang ingin dianalisis?").
-   - DILARANG memberi paragraf opini atau "Insight Bisnis" panjang jika pengguna hanya menanyakan data atau angka ringkas.
+ATURAN KOMUNIKASI & EKSEKUSI (SANGAT KETAT):
+1. ATURAN PEMBUATAN USER BARU (createUser):
+   - Seluruh 8 data berikut WAJIB lengkap sebelum akun dibuat:
+     1. Nama Lengkap
+     2. Username Login POS
+     3. Username Telegram (diawali @)
+     4. Role (kasir, manager, owner)
+     5. Cabang/Tenant toko
+     6. PIN kasir (4-6 digit angka)
+     7. Email
+     8. Nomor HP/WhatsApp
+   - DILARANG memanggil fungsi createUser jika salah satu data di atas belum diberikan oleh pengguna.
+   - Jika pengguna meminta pembuatan user tapi datanya belum lengkap, tanyakan secara spesifik dan ramah data apa saja yang belum terisi.
 
-2. MINIMALIS DAN BERSIH (BEBAS DARI SIMBOL ANEH):
-   - DILARANG KERAS menggunakan simbol bintang (*) atau garis bawah (_) untuk cetak tebal maupun daftar.
-   - HINDARI karakter bertumpuk seperti "* *Teks:* *Angka*".
-   - Untuk daftar, gunakan tanda strip (-) sederhana.
-   - Format angka uang selalu: Rp 50.000 (dengan titik pemisah ribuan).
-   - Buat format yang rapi, padat, dan mudah dibaca cepat di layar ponsel.
+2. ATURAN TRANSAKSI KASIR (createTransaction):
+   - Jika pengguna meminta transaksi kasir, panggil fungsi createTransaction dengan daftar produk dan metode pembayaran yang diminta.
 
-3. CONTOH FORMAT YANG BENAR:
-
-   Jika ditanya penjualan/omset:
-   Penjualan Hari Ini:
-   - Omset: Rp 50.000 (1 transaksi berhasil)
-   - Dibatalkan: 2 transaksi
-   - Pembayaran: QRIS (Rp 50.000)
-   - Kasir: Ria Iskandar
-   - Produk Terjual: Mawar Merah (1), Mawar Putih (1)
-
-   Jika ditanya stok barang:
-   Status Stok:
-   - Semua produk aman di atas 10 unit.
-
-   Jika ditanya kasir:
-   Aktivitas Kasir Hari Ini:
-   - Ria Iskandar: 1 transaksi berhasil (Rp 50.000)
+3. FORMAT TEKS BERSIH:
+   - Jawab langsung apa yang ditanyakan.
+   - DILARANG menggunakan bintang ganda (**), garis bawah (_), atau karakter bertumpuk.
+   - Gunakan tanda strip (-) sederhana untuk daftar.
+   - Jangan mengulang salam formal panjang atau kalimat penutup klise.
 `;
 
+  // Retrieve or initialize conversation history for this chat
+  let history = chatSessions.get(chatId) || [];
+
+  // Add new user question to history
+  history.push({
+    role: 'user',
+    parts: [{ text: question }]
+  });
+
+  // Keep last 6 turns
+  if (history.length > 6) {
+    history = history.slice(-6);
+  }
+
   const payload = {
-    contents: [
-      {
-        parts: [
-          { text: `${systemInstruction}\n\n${storeInfoText}\n\n[PERTANYAAN PENGGUNA]:\n${question}` }
-        ]
-      }
-    ]
+    systemInstruction: {
+      parts: [{ text: `${systemInstruction}\n\n${storeInfoText}` }]
+    },
+    contents: history,
+    tools: GEMINI_TOOLS
   };
 
   const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
@@ -256,8 +411,34 @@ ATURAN FORMAT & KOMUNIKASI (SANGAT KETAT):
       });
 
       const data = await response.json();
-      if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-        return data.candidates[0].content.parts[0].text;
+
+      if (data.candidates && data.candidates[0]?.content?.parts) {
+        const parts = data.candidates[0].content.parts;
+        const functionCallPart = parts.find(p => p.functionCall);
+
+        if (functionCallPart) {
+          const actionReply = await handleToolExecution(operatorUserOr(user), chatId, functionCallPart.functionCall);
+          
+          history.push({
+            role: 'model',
+            parts: [{ text: actionReply }]
+          });
+          chatSessions.set(chatId, history);
+
+          return actionReply;
+        }
+
+        const textPart = parts.find(p => p.text);
+        if (textPart) {
+          const replyText = textPart.text;
+          history.push({
+            role: 'model',
+            parts: [{ text: replyText }]
+          });
+          chatSessions.set(chatId, history);
+
+          return replyText;
+        }
       }
 
       if (data.error) {
@@ -270,6 +451,10 @@ ATURAN FORMAT & KOMUNIKASI (SANGAT KETAT):
 
   if (lastError) throw lastError;
   return 'Maaf, saya tidak dapat memproses data saat ini. Silakan coba sesaat lagi.';
+}
+
+function operatorUserOr(user) {
+  return user;
 }
 
 // Master handler for any incoming Telegram update
@@ -318,27 +503,37 @@ export async function handleTelegramUpdate(update) {
 
   // 4. Handle /start command
   if (rawText.toLowerCase() === '/start') {
-    const welcomeMsg = `Halo! POShere Assistant siap membantu.\n\nSistem toko sudah terhubung secara real-time. Anda bisa langsung menanyakan penjualan hari ini, cek stok barang, atau aktivitas kasir.`;
+    chatSessions.delete(chatId); // reset session
+    const welcomeMsg = `Halo! POShere Assistant siap membantu.\n\nSistem toko sudah terhubung secara real-time. Anda bisa langsung menanyakan penjualan hari ini, cek stok barang, membuat user/tenant, atau membuat pesanan kasir.`;
     await sendTelegramMessage(chatId, welcomeMsg);
     return { status: 'started', username };
   }
 
-  // 5. Send typing indicator while querying and generating AI response
+  // 5. Handle /cancel or batal command
+  if (rawText.toLowerCase() === '/cancel' || rawText.toLowerCase() === 'batal') {
+    chatSessions.delete(chatId);
+    await sendTelegramMessage(chatId, 'Proses percakapan dibatalkan. Ada yang bisa saya bantu lainnya?');
+    return { status: 'cancelled', username };
+  }
+
+  // 6. Send typing indicator while querying and generating AI response
   await sendChatAction(chatId, 'typing');
 
   try {
-    // 6. Gather store context
+    // 7. Gather store context
     const storeContext = await getStoreContext(user);
 
-    // 7. Ask Gemini AI
-    const replyText = await askGemini(user, storeContext, rawText);
+    // 8. Ask Gemini AI with Tools & Memory
+    const replyText = await askGemini(user, storeContext, rawText, chatId);
 
-    // 8. Reply to Telegram
-    await sendTelegramMessage(chatId, replyText);
+    // 9. Reply to Telegram (if not already handled by photo)
+    if (replyText) {
+      await sendTelegramMessage(chatId, replyText);
+    }
     return { status: 'answered', username, query: rawText };
   } catch (err) {
     console.error('Error generating AI response:', err);
-    await sendTelegramMessage(chatId, `Maaf, terjadi kendala saat memproses pertanyaan Anda: ${err.message}`);
+    await sendTelegramMessage(chatId, `Maaf, terjadi kendala saat memproses: ${err.message}`);
     return { status: 'error', error: err.message };
   }
 }
