@@ -126,6 +126,28 @@ async function deleteFromNeonServer(entity, id) {
 }
 window.deleteFromNeonServer = deleteFromNeonServer;
 
+// Global Submit Lock & Button Loading State Helper (Anti Double Click & Spam)
+let isActionSubmitting = false;
+
+function setBtnLoading(buttonEl, isLoading, loadingText = 'Menyimpan...') {
+  if (!buttonEl) return;
+  if (isLoading) {
+    if (!buttonEl.dataset.originalHtml) {
+      buttonEl.dataset.originalHtml = buttonEl.innerHTML;
+    }
+    buttonEl.disabled = true;
+    buttonEl.classList.add('is-loading');
+    buttonEl.innerHTML = `<span class="btn-spinner"></span> <span>${loadingText}</span>`;
+  } else {
+    buttonEl.disabled = false;
+    buttonEl.classList.remove('is-loading');
+    if (buttonEl.dataset.originalHtml) {
+      buttonEl.innerHTML = buttonEl.dataset.originalHtml;
+      delete buttonEl.dataset.originalHtml;
+    }
+  }
+}
+
 // Server Database Direct Save / Update Helper
 async function saveToNeonServer(entity, data) {
   try {
@@ -2098,64 +2120,79 @@ function renderModal() {
 
     return `
       <div class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 440px;">
           <div class="modal-header">
             <h3 style="font-size: 1rem; font-weight: 700;">Checkout & Pembayaran</h3>
             <button class="modal-close-btn" onclick="window.closeModal()">${getIcon('close', 16)}</button>
           </div>
           <div class="modal-body">
-            <div style="background: var(--primary-light); padding: 0.85rem; border-radius: var(--radius-sm); margin-bottom: 1rem;">
-              <div style="font-size: 0.75rem; color: var(--text-secondary);">Total Tagihan:</div>
-              <div style="font-size: 1.35rem; font-weight: 800; color: var(--primary-focus);">${formatRupiah(grandTotal)}</div>
+            <div style="background: var(--primary-light); padding: 0.85rem; border-radius: var(--radius-sm); margin-bottom: 1rem; border: 1px solid var(--primary-border);">
+              <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Total Tagihan:</div>
+              <div style="font-size: 1.4rem; font-weight: 900; color: var(--primary-focus);">${formatRupiah(grandTotal)}</div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Nama Pelanggan (Opsional)</label>
-              <input type="text" id="checkout-customer-name" class="form-control" placeholder="Contoh: Budi / Meja 05" value="${state.checkoutCustomerName || 'Pelanggan'}"/>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0.65rem;">
+                <label class="form-label" style="font-size: 0.75rem;">Nama Pelanggan</label>
+                <input type="text" id="checkout-customer-name" class="form-control" style="font-size: 0.8rem;" placeholder="Contoh: Budi" value="${state.cartCustomerName || state.checkoutCustomerName || 'Pelanggan'}"/>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0.65rem;">
+                <label class="form-label" style="font-size: 0.75rem;">Nomor Meja</label>
+                <input type="text" id="checkout-table-number" class="form-control" style="font-size: 0.8rem;" placeholder="Meja 1" value="${state.cartTableNumber || state.checkoutTableNumber || 'Meja 1'}"/>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Nomor Meja</label>
-              <input type="text" id="checkout-table-number" class="form-control" placeholder="Nomor Meja (opsional)" value="${state.checkoutTableNumber || 'Meja 1'}"/>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Pilih Metode Pembayaran</label>
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label class="form-label">Pilih Metode Pembayaran *</label>
               <select id="checkout-payment-id" class="form-control" onchange="window.onPaymentMethodChange(this.value)">
                 ${tenantPays.length === 0 ? `
                   <option value="">-- Belum ada metode bayar aktif --</option>
                 ` : tenantPays.map(p => `
-                  <option value="${p.id}" ${selectedPay.id === p.id ? 'selected' : ''}>${p.name} (${p.type.toUpperCase()})</option>
+                  <option value="${p.id}" ${selectedPay.id === p.id ? 'selected' : ''}>${p.type === 'qris' ? '📱' : p.type === 'cash' ? '💵' : p.type === 'transfer' ? '🏦' : '💳'} ${p.name} (${p.type.toUpperCase()})</option>
                 `).join('')}
               </select>
             </div>
 
             <div id="qris-checkout-container" style="display: none;">
-              <div class="qris-display-box">
-                <div style="font-size: 0.82rem; font-weight: 700; color: var(--primary-focus);">QRIS PEMBAYARAN</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-                  Scan QR ini, nominal <strong>${formatRupiah(grandTotal)}</strong> otomatis terisi pada aplikasi pembayaran.
+              <div class="qris-display-box" style="padding: 0.85rem; background: #faf5ff; border: 1.5px dashed #c084fc; border-radius: 12px; text-align: center;">
+                <div style="font-size: 0.8rem; font-weight: 800; color: var(--primary-focus); display: inline-flex; align-items: center; gap: 0.35rem;">
+                  <span>${getIcon('qr-code', 14)}</span> QRIS DINAMIS INSTAN
                 </div>
-                <div class="qris-canvas-wrapper">
-                  <canvas id="qris-dynamic-canvas"></canvas>
+                <div style="font-size: 0.72rem; color: var(--text-muted); margin: 0.25rem 0 0.5rem 0;">
+                  Scan QR ini, nominal <strong>${formatRupiah(grandTotal)}</strong> otomatis terisi di aplikasi pelanggan.
                 </div>
-                <div style="margin-top: 0.4rem; font-size: 0.72rem; color: #64748b; font-weight: 500;">
-                  Mendukung BCA, Mandiri, BRI, BNI, GoPay, OVO, Dana, ShopeePay & semua bank
+                <div class="qris-canvas-wrapper" style="box-shadow: 0 4px 15px rgba(139, 92, 246, 0.2); display: inline-block;">
+                  <canvas id="qris-dynamic-canvas" style="max-width: 175px; max-height: 175px;"></canvas>
+                </div>
+                <div style="margin-top: 0.35rem; font-size: 0.68rem; color: #64748b;">
+                  BCA, Mandiri, BRI, GoPay, OVO, ShopeePay, DANA & seluruh Bank
                 </div>
                 <div style="display: none;" id="qris-dynamic-string-display"></div>
               </div>
             </div>
 
-            <div id="cash-checkout-container" class="form-group" style="margin-top: 0.85rem;">
+            <div id="cash-checkout-container" class="form-group" style="margin-top: 0.65rem;">
               <label class="form-label">Nominal Uang Diterima (Rp)</label>
-              <input type="number" id="checkout-paid-amount" class="form-control" value="${grandTotal}" min="${grandTotal}" />
+              <input type="number" id="checkout-paid-amount" class="form-control" value="${grandTotal}" min="${grandTotal}" style="font-size: 1rem; font-weight: 700; color: #059669;" />
+              <div style="display: flex; gap: 0.35rem; margin-top: 0.4rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.68rem; padding: 2px 7px;" onclick="document.getElementById('checkout-paid-amount').value=${grandTotal}">Uang Pas</button>
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.68rem; padding: 2px 7px;" onclick="document.getElementById('checkout-paid-amount').value=Math.max(${grandTotal}, 20000)">Rp 20.000</button>
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.68rem; padding: 2px 7px;" onclick="document.getElementById('checkout-paid-amount').value=Math.max(${grandTotal}, 50000)">Rp 50.000</button>
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.68rem; padding: 2px 7px;" onclick="document.getElementById('checkout-paid-amount').value=Math.max(${grandTotal}, 100000)">Rp 100.000</button>
+              </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
-            <button class="btn btn-success btn-icon-text" onclick="window.processPaymentSubmit()">
-              ${getIcon('check', 15)} <span>Selesaikan Transaksi</span>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary btn-icon-text" style="font-size: 0.74rem; padding: 0.45rem 0.65rem;" onclick="window.openCustomerDisplay()" title="Tampilkan rincian pesanan ke layar hadap pelanggan">
+              ${getIcon('monitor', 13)} <span>Layar Pelanggan</span>
             </button>
+            <div style="display: flex; gap: 0.4rem;">
+              <button type="button" class="btn btn-secondary" onclick="window.closeModal()">Batal</button>
+              <button type="button" id="checkout-submit-btn" class="btn btn-success btn-icon-text" onclick="window.processPaymentSubmit()" style="font-weight: 700;">
+                ${getIcon('check', 15)} <span>Selesaikan Transaksi</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2891,16 +2928,18 @@ window.switchRole = function(role) {
 };
 window.closeModal = closeModal;
 
-// Flow Baru:
-// 1. Klik Bayar/Checkout -> Buka Modal Pilih Metode Pembayaran (Cash, QRIS, Transfer, dll)
+// 1. Klik Bayar/Checkout -> Buka Modal Checkout & Pembayaran Kasir secara langsung (Cepat & Intuitif)
 window.startCheckout = function() {
-  if (state.cart.length === 0) return;
+  if (!state.cart || state.cart.length === 0) {
+    showToast('Keranjang pesanan masih kosong! Pilih produk terlebih dahulu.', 'warning');
+    return;
+  }
   state.isMobileCartOpen = false;
   state.isCustomerDisplayOpen = false;
-  openModal('payment_select_method');
+  openModal('payment_checkout');
 };
 
-// 2. Setelah Kasir Memilih Payment Method -> Tutup modal pilih, lalu BUKA CUSTOMER DISPLAY (konfirmasi pembayaran terlampir)
+// 2. Pemilihan Metode Pembayaran dari Layar Pelanggan / Selektor Eksternal
 window.confirmSelectedPaymentMethod = function(paymentId) {
   const method = state.paymentMethods.find(p => p.id === paymentId);
   state.selectedCheckoutPayment = method;
@@ -2922,47 +2961,65 @@ window.confirmSelectedPaymentMethod = function(paymentId) {
 };
 
 window.processPaymentSubmit = async function() {
-  const payId = document.getElementById('checkout-payment-id').value;
-  const custName = document.getElementById('checkout-customer-name').value || 'Pelanggan Umum';
-  const tableNum = document.getElementById('checkout-table-number').value || '-';
-  const method = state.paymentMethods.find(p => p.id === payId);
-  const grandTotal = state.cart.reduce((s, it) => s + it.subtotal, 0);
+  if (isActionSubmitting) return;
 
-  let paidAmount = grandTotal;
-  if (method && method.type === 'cash') {
-    paidAmount = Number(document.getElementById('checkout-paid-amount').value) || grandTotal;
-    if (paidAmount < grandTotal) {
-      await showAlertDialog({
-        title: 'Nominal Bayar Kurang',
-        message: `Uang tunai yang dibayarkan kurang dari total tagihan pesanan!\n\nTotal: ${formatRupiah(grandTotal)}\nDibayar: ${formatRupiah(paidAmount)}`,
-        type: 'warning'
-      });
-      return;
-    }
+  if (!state.cart || state.cart.length === 0) {
+    showToast('Keranjang pesanan kosong! Tidak ada transaksi yang diproses.', 'warning');
+    closeModal();
+    return;
   }
 
-  const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const targetTenantId = getTargetTenantId();
-
-  const payload = {
-    invoice_number: invoiceNumber,
-    cashier_user_id: state.currentUser.id,
-    cashier_name: state.currentUser.name,
-    payment_method_id: payId,
-    payment_method_name: method ? method.name : 'Cash',
-    customer_name: custName,
-    table_number: tableNum,
-    items: state.cart,
-    subtotal: grandTotal,
-    grand_total: grandTotal,
-    paid_amount: paidAmount,
-    change_amount: Math.max(0, paidAmount - grandTotal),
-    qris_dynamic_string: dynamicQrisStringCache,
-    status: 'completed',
-    tenant_id: targetTenantId
-  };
+  const submitBtn = document.getElementById('checkout-submit-btn') || document.querySelector('.modal-footer .btn-success') || document.activeElement;
+  setBtnLoading(submitBtn, true, 'Menyimpan Transaksi...');
+  isActionSubmitting = true;
 
   try {
+    const paySelect = document.getElementById('checkout-payment-id');
+    const payId = paySelect ? paySelect.value : state.selectedCheckoutPayment?.id;
+    const custInput = document.getElementById('checkout-customer-name');
+    const custName = (custInput && custInput.value.trim()) || state.cartCustomerName || 'Pelanggan';
+    const tableInput = document.getElementById('checkout-table-number');
+    const tableNum = (tableInput && tableInput.value.trim()) || state.cartTableNumber || 'Meja 1';
+    const method = state.paymentMethods.find(p => p.id === payId) || state.selectedCheckoutPayment;
+    const grandTotal = state.cart.reduce((s, it) => s + it.subtotal, 0);
+
+    let paidAmount = grandTotal;
+    if (method && method.type === 'cash') {
+      const paidInput = document.getElementById('checkout-paid-amount');
+      paidAmount = Number(paidInput ? paidInput.value : grandTotal) || grandTotal;
+      if (paidAmount < grandTotal) {
+        setBtnLoading(submitBtn, false);
+        isActionSubmitting = false;
+        await showAlertDialog({
+          title: 'Nominal Bayar Kurang',
+          message: `Uang tunai yang dibayarkan kurang dari total tagihan pesanan!\n\nTotal: ${formatRupiah(grandTotal)}\nDibayar: ${formatRupiah(paidAmount)}`,
+          type: 'warning'
+        });
+        return;
+      }
+    }
+
+    const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const targetTenantId = getTargetTenantId();
+
+    const payload = {
+      invoice_number: invoiceNumber,
+      cashier_user_id: state.currentUser?.id || 'usr_superadmin',
+      cashier_name: state.currentUser?.name || 'Kasir',
+      payment_method_id: payId || method?.id || 'cash',
+      payment_method_name: method ? method.name : 'Cash',
+      customer_name: custName,
+      table_number: tableNum,
+      items: JSON.parse(JSON.stringify(state.cart)),
+      subtotal: grandTotal,
+      grand_total: grandTotal,
+      paid_amount: paidAmount,
+      change_amount: Math.max(0, paidAmount - grandTotal),
+      qris_dynamic_string: dynamicQrisStringCache,
+      status: 'completed',
+      tenant_id: targetTenantId
+    };
+
     let savedTrx;
     if (state.activeHoldTransactionId) {
       // Selesaikan pesanan yang sebelumnya di-hold
@@ -2986,17 +3043,24 @@ window.processPaymentSubmit = async function() {
     state.activeHoldTransactionId = null;
     state.cartCustomerName = '';
     state.cartTableNumber = '';
+    state.isCustomerDisplayOpen = false;
+    state.isMobileCartOpen = false;
+
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
     }
     await loadAllData();
     openModal('receipt', savedTrx || payload);
+    showToast('Transaksi berhasil disimpan & diselesaikan!', 'success');
   } catch (err) {
     await showAlertDialog({
       title: 'Gagal Menyimpan Transaksi',
       message: 'Terjadi kesalahan saat memproses transaksi: ' + err.message,
       type: 'danger'
     });
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
 };
 
@@ -3008,28 +3072,40 @@ window.openHoldOrderForm = function() {
 
 window.saveHoldOrder = async function(event) {
   event.preventDefault();
-  const custName = document.getElementById('hold-customer-name').value || 'Tamu';
-  const tableNum = document.getElementById('hold-table-number').value || 'Meja 1';
-  const note = document.getElementById('hold-note').value || '';
-  const grandTotal = state.cart.reduce((s, it) => s + it.subtotal, 0);
-  const targetTenantId = getTargetTenantId();
+  if (isActionSubmitting) return;
 
-  const payload = {
-    cashier_user_id: state.currentUser.id,
-    cashier_name: state.currentUser.name,
-    customer_name: custName,
-    table_number: tableNum,
-    items: state.cart,
-    subtotal: grandTotal,
-    grand_total: grandTotal,
-    paid_amount: 0,
-    change_amount: 0,
-    note: note,
-    status: 'hold',
-    tenant_id: targetTenantId
-  };
+  if (!state.cart || state.cart.length === 0) {
+    showToast('Keranjang pesanan kosong!', 'warning');
+    closeModal();
+    return;
+  }
+
+  const submitBtn = event.target?.querySelector('button[type="submit"]') || event.submitter;
+  setBtnLoading(submitBtn, true, 'Menyimpan Open Bill...');
+  isActionSubmitting = true;
 
   try {
+    const custName = document.getElementById('hold-customer-name')?.value || 'Tamu';
+    const tableNum = document.getElementById('hold-table-number')?.value || 'Meja 1';
+    const note = document.getElementById('hold-note')?.value || '';
+    const grandTotal = state.cart.reduce((s, it) => s + it.subtotal, 0);
+    const targetTenantId = getTargetTenantId();
+
+    const payload = {
+      cashier_user_id: state.currentUser?.id || 'usr_superadmin',
+      cashier_name: state.currentUser?.name || 'Kasir',
+      customer_name: custName,
+      table_number: tableNum,
+      items: JSON.parse(JSON.stringify(state.cart)),
+      subtotal: grandTotal,
+      grand_total: grandTotal,
+      paid_amount: 0,
+      change_amount: 0,
+      note: note,
+      status: 'hold',
+      tenant_id: targetTenantId
+    };
+
     let holdTrx;
     if (state.activeHoldTransactionId) {
       holdTrx = await dbService.updateTransaction(state.activeHoldTransactionId, payload);
@@ -3054,18 +3130,24 @@ window.saveHoldOrder = async function(event) {
     state.activeHoldTransactionId = null;
     state.cartCustomerName = '';
     state.cartTableNumber = '';
+    state.isMobileCartOpen = false;
     closeModal();
+
     if (window.syncDataToNeonServer) {
       await window.syncDataToNeonServer(true);
     }
     await loadAllData();
     renderApp();
+    showToast('Pesanan berhasil di-hold (Open Bill)!', 'success');
   } catch (err) {
     await showAlertDialog({
       title: 'Gagal Menyimpan Open Bill',
       message: err.message,
       type: 'danger'
     });
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
 };
 
@@ -3475,34 +3557,50 @@ window.deleteCategory = async function(id) {
 
 window.saveCategoryForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('catform-name').value.trim();
+  if (isActionSubmitting) return;
+
+  const name = document.getElementById('catform-name')?.value.trim();
   const customId = document.getElementById('catform-id') ? document.getElementById('catform-id').value.trim() : '';
   const tenant_id = getTargetTenantId('catform-tenant');
 
-  if (!name) return;
-
-  const catId = id || customId || `cat_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
-  const payload = { id: catId, name, icon: 'coffee', tenant_id };
-
-  await saveToNeonServer('categories', payload);
-
-  if (id) {
-    await dbService.updateCategory(id, { name, tenant_id });
-    const idx = (state.categories || []).findIndex(c => c.id === id);
-    if (idx >= 0) state.categories[idx] = { ...state.categories[idx], name, tenant_id };
-  } else {
-    const created = await dbService.createCategory(payload);
-    state.categories = state.categories || [];
-    state.categories.push(created);
+  if (!name) {
+    showToast('Nama kategori wajib diisi!', 'warning');
+    return;
   }
 
-  closeModal();
-  if (window.syncDataToNeonServer) {
-    await window.syncDataToNeonServer(true);
+  const submitBtn = event.target?.querySelector('button[type="submit"]') || event.submitter || document.activeElement;
+  setBtnLoading(submitBtn, true, id ? 'Menyimpan Perubahan...' : 'Menambahkan Kategori...');
+  isActionSubmitting = true;
+
+  try {
+    const catId = id || customId || `cat_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
+    const payload = { id: catId, name, icon: 'coffee', tenant_id };
+
+    await saveToNeonServer('categories', payload);
+
+    if (id) {
+      await dbService.updateCategory(id, { name, tenant_id });
+      const idx = (state.categories || []).findIndex(c => c.id === id);
+      if (idx >= 0) state.categories[idx] = { ...state.categories[idx], name, tenant_id };
+    } else {
+      const created = await dbService.createCategory(payload);
+      state.categories = state.categories || [];
+      state.categories.push(created);
+    }
+
+    closeModal();
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
+    await loadAllData();
+    renderApp();
+    showToast('Kategori berhasil disimpan', 'success');
+  } catch (err) {
+    showToast('Gagal menyimpan kategori: ' + err.message, 'danger');
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
-  await loadAllData();
-  renderApp();
-  showToast('Kategori berhasil disimpan', 'success');
 };
 
 // Master Product Actions
@@ -3572,38 +3670,56 @@ window.handleProductImageUpload = async function(input) {
 
 window.saveProductForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('pform-name').value.trim();
+  if (isActionSubmitting) return;
+
+  const name = document.getElementById('pform-name')?.value.trim();
   const rawCat = document.getElementById('pform-cat') ? document.getElementById('pform-cat').value : null;
   const category_id = rawCat && rawCat.trim() !== '' ? rawCat.trim() : null;
-  const sku = document.getElementById('pform-sku').value.trim();
-  const price = Number(document.getElementById('pform-price').value) || 0;
-  const cost_price = Number(document.getElementById('pform-cost').value) || 0;
-  const stock = Number(document.getElementById('pform-stock').value) || 0;
-  const image_path = document.getElementById('pform-image-path').value.trim();
+  const sku = document.getElementById('pform-sku')?.value.trim();
+  const price = Number(document.getElementById('pform-price')?.value) || 0;
+  const cost_price = Number(document.getElementById('pform-cost')?.value) || 0;
+  const stock = Number(document.getElementById('pform-stock')?.value) || 0;
+  const image_path = document.getElementById('pform-image-path')?.value.trim();
   const tenant_id = getTargetTenantId('pform-tenant');
 
-  const prodId = id || `prod_${Date.now()}`;
-  const payload = { id: prodId, name, category_id, sku, price, cost_price, stock, image_path, tenant_id, is_active: true };
-
-  await saveToNeonServer('products', payload);
-
-  if (id) {
-    await dbService.updateProduct(id, payload);
-    const idx = (state.products || []).findIndex(p => p.id === id);
-    if (idx >= 0) state.products[idx] = { ...state.products[idx], ...payload };
-  } else {
-    const created = await dbService.createProduct(payload);
-    state.products = state.products || [];
-    state.products.push(created);
+  if (!name) {
+    showToast('Nama produk wajib diisi!', 'warning');
+    return;
   }
 
-  closeModal();
-  if (window.syncDataToNeonServer) {
-    await window.syncDataToNeonServer(true);
+  const submitBtn = event.target?.querySelector('button[type="submit"]') || event.submitter || document.activeElement;
+  setBtnLoading(submitBtn, true, id ? 'Menyimpan Perubahan...' : 'Menambahkan Produk...');
+  isActionSubmitting = true;
+
+  try {
+    const prodId = id || `prod_${Date.now()}`;
+    const payload = { id: prodId, name, category_id, sku, price, cost_price, stock, image_path, tenant_id, is_active: true };
+
+    await saveToNeonServer('products', payload);
+
+    if (id) {
+      await dbService.updateProduct(id, payload);
+      const idx = (state.products || []).findIndex(p => p.id === id);
+      if (idx >= 0) state.products[idx] = { ...state.products[idx], ...payload };
+    } else {
+      const created = await dbService.createProduct(payload);
+      state.products = state.products || [];
+      state.products.push(created);
+    }
+
+    closeModal();
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
+    await loadAllData();
+    renderApp();
+    showToast('Produk berhasil disimpan', 'success');
+  } catch (err) {
+    showToast('Gagal menyimpan produk: ' + err.message, 'danger');
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
-  await loadAllData();
-  renderApp();
-  showToast('Produk berhasil disimpan', 'success');
 };
 
 // Master Payment Actions
@@ -3719,35 +3835,53 @@ window.handleQrisImageUpload = async function(input) {
 
 window.savePaymentForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('payform-name').value.trim();
-  const type = document.getElementById('payform-type').value;
-  const account_info = document.getElementById('payform-info').value.trim();
-  const image_path = document.getElementById('payform-image-path').value.trim();
-  const qris_raw_string = document.getElementById('payform-qris-string').value.trim();
+  if (isActionSubmitting) return;
+
+  const name = document.getElementById('payform-name')?.value.trim();
+  const type = document.getElementById('payform-type')?.value;
+  const account_info = document.getElementById('payform-info')?.value.trim();
+  const image_path = document.getElementById('payform-image-path')?.value.trim();
+  const qris_raw_string = document.getElementById('payform-qris-string')?.value.trim();
   const tenant_id = getTargetTenantId('payform-tenant');
 
-  const payId = id || `pay_${Date.now()}`;
-  const payload = { id: payId, name, type, account_info, image_path, qris_raw_string, tenant_id, is_active: true };
-
-  await saveToNeonServer('payment_methods', payload);
-
-  if (id) {
-    await dbService.updatePaymentMethod(id, payload);
-    const idx = (state.paymentMethods || []).findIndex(p => p.id === id);
-    if (idx >= 0) state.paymentMethods[idx] = { ...state.paymentMethods[idx], ...payload };
-  } else {
-    const created = await dbService.createPaymentMethod(payload);
-    state.paymentMethods = state.paymentMethods || [];
-    state.paymentMethods.push(created);
+  if (!name) {
+    showToast('Nama metode pembayaran wajib diisi!', 'warning');
+    return;
   }
 
-  closeModal();
-  if (window.syncDataToNeonServer) {
-    await window.syncDataToNeonServer(true);
+  const submitBtn = event.target?.querySelector('button[type="submit"]') || event.submitter || document.activeElement;
+  setBtnLoading(submitBtn, true, id ? 'Menyimpan Perubahan...' : 'Menambahkan Metode...');
+  isActionSubmitting = true;
+
+  try {
+    const payId = id || `pay_${Date.now()}`;
+    const payload = { id: payId, name, type, account_info, image_path, qris_raw_string, tenant_id, is_active: true };
+
+    await saveToNeonServer('payment_methods', payload);
+
+    if (id) {
+      await dbService.updatePaymentMethod(id, payload);
+      const idx = (state.paymentMethods || []).findIndex(p => p.id === id);
+      if (idx >= 0) state.paymentMethods[idx] = { ...state.paymentMethods[idx], ...payload };
+    } else {
+      const created = await dbService.createPaymentMethod(payload);
+      state.paymentMethods = state.paymentMethods || [];
+      state.paymentMethods.push(created);
+    }
+
+    closeModal();
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
+    await loadAllData();
+    renderApp();
+    showToast('Metode pembayaran berhasil disimpan', 'success');
+  } catch (err) {
+    showToast('Gagal menyimpan metode pembayaran: ' + err.message, 'danger');
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
-  await loadAllData();
-  renderApp();
-  showToast('Metode pembayaran berhasil disimpan', 'success');
 };
 
 // Master User Actions
@@ -3798,10 +3932,12 @@ window.deleteUser = async function(id) {
 
 window.saveUserForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('uform-name').value.trim();
-  const username = document.getElementById('uform-username').value.trim().toLowerCase();
-  const role = document.getElementById('uform-role').value;
-  const pin = document.getElementById('uform-pin').value.trim();
+  if (isActionSubmitting) return;
+
+  const name = document.getElementById('uform-name')?.value.trim();
+  const username = document.getElementById('uform-username')?.value.trim().toLowerCase();
+  const role = document.getElementById('uform-role')?.value;
+  const pin = document.getElementById('uform-pin')?.value.trim();
   const tenant_id = (role === 'super_admin') ? null : getTargetTenantId('uform-tenant');
   const emailEl = document.getElementById('uform-email');
   const email = emailEl ? emailEl.value.trim() : '';
@@ -3827,28 +3963,39 @@ window.saveUserForm = async function(event, id) {
     return;
   }
 
-  const userId = id || `usr_${Date.now()}`;
-  const payload = { id: userId, name, username, role, pin, tenant_id, email, password: pin, status, telegram_username, phone };
+  const submitBtn = event.target?.querySelector('button[type="submit"]') || event.submitter || document.activeElement;
+  setBtnLoading(submitBtn, true, id ? 'Menyimpan Perubahan...' : 'Mendaftarkan User...');
+  isActionSubmitting = true;
 
-  await saveToNeonServer('users', payload);
+  try {
+    const userId = id || `usr_${Date.now()}`;
+    const payload = { id: userId, name, username, role, pin, tenant_id, email, password: pin, status, telegram_username, phone };
 
-  if (id) {
-    await dbService.updateUser(id, payload);
-    const idx = (state.users || []).findIndex(u => u.id === id);
-    if (idx >= 0) state.users[idx] = { ...state.users[idx], ...payload };
-  } else {
-    const created = await dbService.createUser(payload);
-    state.users = state.users || [];
-    state.users.push(created);
+    await saveToNeonServer('users', payload);
+
+    if (id) {
+      await dbService.updateUser(id, payload);
+      const idx = (state.users || []).findIndex(u => u.id === id);
+      if (idx >= 0) state.users[idx] = { ...state.users[idx], ...payload };
+    } else {
+      const created = await dbService.createUser(payload);
+      state.users = state.users || [];
+      state.users.push(created);
+    }
+
+    closeModal();
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
+    await loadAllData();
+    renderApp();
+    showToast(`Pengguna "${name}" berhasil disimpan untuk ${getTenantName(tenant_id)}!`, 'success');
+  } catch (err) {
+    showToast('Gagal menyimpan pengguna: ' + err.message, 'danger');
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
-
-  closeModal();
-  if (window.syncDataToNeonServer) {
-    await window.syncDataToNeonServer(true);
-  }
-  await loadAllData();
-  renderApp();
-  showToast(`Pengguna "${name}" berhasil disimpan untuk ${getTenantName(tenant_id)}!`, 'success');
 };
 
 // Multi-Tenant Action Handlers
@@ -3864,6 +4011,8 @@ window.openTenantModal = function(id = null) {
 
 window.saveTenantSubmit = async function(event) {
   if (event) event.preventDefault();
+  if (isActionSubmitting) return;
+
   const form = event.target;
   const id = form.tenantId.value || `tenant_${Date.now()}`;
   const name = form.tenantName.value.trim();
@@ -3872,30 +4021,46 @@ window.saveTenantSubmit = async function(event) {
   const address = form.tenantAddress.value.trim();
   const status = form.tenantStatus.value;
 
-  const newTenant = { id, name, slug, phone, address, status };
-  await saveToNeonServer('tenants', newTenant);
-
-  const idx = state.tenants.findIndex(t => t.id === id);
-  if (idx >= 0) {
-    state.tenants[idx] = newTenant;
-  } else {
-    state.tenants.push(newTenant);
+  if (!name) {
+    showToast('Nama toko/cabang wajib diisi!', 'warning');
+    return;
   }
+
+  const submitBtn = form.querySelector('button[type="submit"]') || event?.submitter || document.activeElement;
+  setBtnLoading(submitBtn, true, 'Menyimpan Toko...');
+  isActionSubmitting = true;
 
   try {
-    await fetch('/api/neon/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenants: state.tenants })
-    });
-  } catch (e) {
-    console.warn('Sync tenant error:', e);
-  }
+    const newTenant = { id, name, slug, phone, address, status };
+    await saveToNeonServer('tenants', newTenant);
 
-  state.modalState = { isOpen: false, type: null, data: null };
-  await loadAllData();
-  renderApp();
-  showToast(`Toko "${name}" berhasil disimpan!`, 'success');
+    const idx = state.tenants.findIndex(t => t.id === id);
+    if (idx >= 0) {
+      state.tenants[idx] = newTenant;
+    } else {
+      state.tenants.push(newTenant);
+    }
+
+    try {
+      await fetch('/api/neon/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenants: state.tenants })
+      });
+    } catch (e) {
+      console.warn('Sync tenant error:', e);
+    }
+
+    state.modalState = { isOpen: false, type: null, data: null };
+    await loadAllData();
+    renderApp();
+    showToast(`Toko "${name}" berhasil disimpan!`, 'success');
+  } catch (err) {
+    showToast('Gagal menyimpan toko: ' + err.message, 'danger');
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
+  }
 };
 
 window.deleteTenant = async function(id) {
@@ -3987,6 +4152,11 @@ window.resetRolePermissions = function(roleId) {
 };
 
 window.saveRolePermissions = async function() {
+  if (isActionSubmitting) return;
+  const submitBtn = document.querySelector('button[onclick*="saveRolePermissions"]') || document.activeElement;
+  setBtnLoading(submitBtn, true, 'Menyimpan Hak Akses...');
+  isActionSubmitting = true;
+
   try {
     const res = await fetch('/api/neon/sync', {
       method: 'POST',
@@ -4015,6 +4185,9 @@ window.saveRolePermissions = async function() {
       message: 'Terjadi kesalahan saat menyimpan hak akses: ' + err.message,
       type: 'danger'
     });
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
 };
 
@@ -4150,35 +4323,53 @@ window.deleteRegister = async function(id) {
 
 window.saveRegisterForm = async function(event, id) {
   event.preventDefault();
-  const name = document.getElementById('regform-name').value.trim();
-  const device_code = document.getElementById('regform-code').value.trim();
-  const location = document.getElementById('regform-loc').value.trim();
-  const printer_type = document.getElementById('regform-printer-type').value;
-  const paper_width = Number(document.getElementById('regform-paper').value) || 58;
+  if (isActionSubmitting) return;
+
+  const name = document.getElementById('regform-name')?.value.trim();
+  const device_code = document.getElementById('regform-code')?.value.trim();
+  const location = document.getElementById('regform-loc')?.value.trim();
+  const printer_type = document.getElementById('regform-printer-type')?.value;
+  const paper_width = Number(document.getElementById('regform-paper')?.value) || 58;
   const tenant_id = getTargetTenantId('regform-tenant');
 
-  const regId = id || `reg_${Date.now()}`;
-  const payload = { id: regId, name, device_code, location, printer_type, paper_width, tenant_id, is_active: true };
-
-  await saveToNeonServer('cash_registers', payload);
-
-  if (id) {
-    await dbService.updateCashRegister(id, payload);
-    const idx = (state.cashRegisters || []).findIndex(r => r.id === id);
-    if (idx >= 0) state.cashRegisters[idx] = { ...state.cashRegisters[idx], ...payload };
-  } else {
-    const created = await dbService.createCashRegister(payload);
-    state.cashRegisters = state.cashRegisters || [];
-    state.cashRegisters.push(created);
+  if (!name) {
+    showToast('Nama mesin kasir wajib diisi!', 'warning');
+    return;
   }
 
-  closeModal();
-  if (window.syncDataToNeonServer) {
-    await window.syncDataToNeonServer(true);
+  const submitBtn = event.target?.querySelector('button[type="submit"]') || event.submitter || document.activeElement;
+  setBtnLoading(submitBtn, true, id ? 'Menyimpan Perubahan...' : 'Mendaftarkan Mesin...');
+  isActionSubmitting = true;
+
+  try {
+    const regId = id || `reg_${Date.now()}`;
+    const payload = { id: regId, name, device_code, location, printer_type, paper_width, tenant_id, is_active: true };
+
+    await saveToNeonServer('cash_registers', payload);
+
+    if (id) {
+      await dbService.updateCashRegister(id, payload);
+      const idx = (state.cashRegisters || []).findIndex(r => r.id === id);
+      if (idx >= 0) state.cashRegisters[idx] = { ...state.cashRegisters[idx], ...payload };
+    } else {
+      const created = await dbService.createCashRegister(payload);
+      state.cashRegisters = state.cashRegisters || [];
+      state.cashRegisters.push(created);
+    }
+
+    closeModal();
+    if (window.syncDataToNeonServer) {
+      await window.syncDataToNeonServer(true);
+    }
+    await loadAllData();
+    renderApp();
+    showToast('Mesin kasir berhasil disimpan', 'success');
+  } catch (err) {
+    showToast('Gagal menyimpan mesin kasir: ' + err.message, 'danger');
+  } finally {
+    isActionSubmitting = false;
+    setBtnLoading(submitBtn, false);
   }
-  await loadAllData();
-  renderApp();
-  showToast('Mesin kasir berhasil disimpan', 'success');
 };
 
 // Customer Facing Display Handlers & Renderer
@@ -4189,14 +4380,19 @@ window.openCustomerDisplay = function() {
 
 window.closeCustomerDisplay = function() {
   state.isCustomerDisplayOpen = false;
-  // Setelah close atau selesai di display customer, buka form Checkout & Pembayaran Kasir
-  openModal('payment_checkout');
+  renderApp();
 };
 
 window.finishCustomerDisplay = function() {
   state.isCustomerDisplayOpen = false;
-  // Buka form Checkout & Pembayaran Kasir untuk menyelesaikan transaksi
-  openModal('payment_checkout');
+  const pay = state.selectedCheckoutPayment;
+  if (pay && pay.type !== 'cash') {
+    // QRIS / Transfer / E-Wallet: Pembayaran sudah dikonfirmasi pelanggan -> langsung simpan transaksi!
+    window.processPaymentSubmit();
+  } else {
+    // Tunai: Buka form pembayaran kasir untuk input uang dan hitung kembalian
+    openModal('payment_checkout');
+  }
 };
 
 window.customerPrintReceipt = async function() {

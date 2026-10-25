@@ -1086,6 +1086,35 @@ body {
   transform: none !important;
 }
 
+.btn.is-loading {
+  position: relative;
+  pointer-events: none !important;
+  opacity: 0.82 !important;
+  cursor: not-allowed !important;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  animation: btn-spin-anim 0.65s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.btn-secondary .btn-spinner,
+.btn-warning .btn-spinner {
+  border-color: rgba(30, 27, 75, 0.2);
+  border-top-color: #1e1b4b;
+}
+
+@keyframes btn-spin-anim {
+  to { transform: rotate(360deg); }
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%);
   color: var(--text-white);
@@ -2073,6 +2102,66 @@ body {
     max-width: 96%;
     padding: 1.25rem 1rem;
   }
+
+  /* Customer Facing Display on Mobile Devices */
+  .customer-display-overlay {
+    padding: 0.5rem;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .customer-display-box {
+    max-width: 100%;
+    width: 100%;
+    max-height: 94vh;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .customer-display-header {
+    padding: 0.65rem 0.85rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .customer-display-header .btn {
+    padding: 0.35rem 0.6rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  .customer-display-body {
+    grid-template-columns: 1fr !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    min-height: auto !important;
+  }
+
+  .cd-left-panel {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-light) !important;
+    padding: 1rem 0.75rem !important;
+    background: #ffffff;
+  }
+
+  .cd-left-panel .qris-canvas-wrapper {
+    padding: 0.4rem;
+  }
+
+  .cd-left-panel canvas {
+    max-width: 165px !important;
+    max-height: 165px !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .cd-right-panel {
+    padding: 1rem 0.75rem !important;
+    border-top: none;
+    background: #fdfcff;
+  }
 }
 
 /* 5. Small Phones (<= 480px) */
@@ -2191,6 +2280,15 @@ body {
   .m-cart-btn {
     padding: 0.4rem 0.6rem;
     font-size: 0.7rem;
+  }
+
+  .cd-left-panel canvas {
+    max-width: 135px !important;
+    max-height: 135px !important;
+  }
+
+  .customer-display-header {
+    padding: 0.5rem 0.65rem;
   }
 }
 
