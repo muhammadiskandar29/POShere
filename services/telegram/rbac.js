@@ -3,31 +3,49 @@
 export const ROLE_PERMISSIONS = {
   super_admin: [
     'create_tenant',
+    'delete_tenant',
     'create_user',
+    'delete_user',
     'create_category',
+    'delete_category',
     'create_product',
+    'delete_product',
+    'update_product_stock',
     'create_transaction',
+    'cancel_transaction',
+    'delete_hold_order',
     'view_reports',
-    'view_stock',
-    'cancel_transaction'
+    'view_stock'
   ],
   owner: [
     'create_user',
+    'delete_user',
     'create_category',
+    'delete_category',
     'create_product',
+    'delete_product',
+    'update_product_stock',
     'create_transaction',
+    'cancel_transaction',
+    'delete_hold_order',
     'view_reports',
     'view_stock'
   ],
   manager: [
     'create_category',
+    'delete_category',
     'create_product',
+    'delete_product',
+    'update_product_stock',
     'create_transaction',
+    'cancel_transaction',
+    'delete_hold_order',
     'view_reports',
     'view_stock'
   ],
   kasir: [
     'create_transaction',
+    'delete_hold_order',
     'view_stock'
   ]
 };

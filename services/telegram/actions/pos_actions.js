@@ -188,3 +188,120 @@ export async function executeCreateTransaction(operatorUser, params) {
     qrBuffer
   };
 }
+
+export async function executeCancelTransaction(operatorUser, params) {
+  if (!canPerformAction(operatorUser.role, 'cancel_transaction')) {
+    return {
+      success: false,
+      error: getRoleActionDeniedMessage(operatorUser, 'membatalkan transaksi')
+    };
+  }
+
+  const invoiceNumber = params.invoice_number?.trim();
+  if (!invoiceNumber) {
+    return { success: false, error: 'Nomor invoice transaksi wajib disertakan (contoh: INV-20261025-3375).' };
+  }
+
+  let trxs = [];
+  if (operatorUser.role === 'super_admin') {
+    trxs = await sql`
+      SELECT * FROM transactions 
+      WHERE invoice_number ILIKE ${invoiceNumber} OR id = ${invoiceNumber}
+      LIMIT 1;
+    `;
+  } else {
+    trxs = await sql`
+      SELECT * FROM transactions 
+      WHERE (invoice_number ILIKE ${invoiceNumber} OR id = ${invoiceNumber}) AND tenant_id = ${operatorUser.tenant_id}
+      LIMIT 1;
+    `;
+  }
+
+  if (trxs.length === 0) {
+    return { success: false, error: `Transaksi dengan nomor invoice "${invoiceNumber}" tidak ditemukan.` };
+  }
+
+  const trx = trxs[0];
+  if (trx.status === 'cancelled' || trx.status === 'dibatalkan') {
+    return { success: false, error: `Transaksi ${trx.invoice_number} sudah berstatus DIBATALKAN sebelumnya.` };
+  }
+
+  const reason = params.reason?.trim() || `Dibatalkan via Telegram bot oleh ${operatorUser.name}`;
+
+  // 1. Restore product stocks
+  const restoredItems = [];
+  if (Array.isArray(trx.items)) {
+    for (const item of trx.items) {
+      if (item.product_id) {
+        const qty = Number(item.quantity || item.qty || 1);
+        await sql`
+          UPDATE products 
+          SET stock = stock + ${qty} 
+          WHERE id = ${item.product_id};
+        `;
+        restoredItems.push(`${item.name} (+${qty} unit)`);
+      }
+    }
+  }
+
+  // 2. Mark transaction as cancelled
+  const note = `DIBATALKAN: ${reason} (Oleh ${operatorUser.name})`;
+  await sql`
+    UPDATE transactions 
+    SET status = 'cancelled', payment_status = 'cancelled', note = ${note}
+    WHERE id = ${trx.id};
+  `;
+
+  return {
+    success: true,
+    transaction: {
+      invoice_number: trx.invoice_number,
+      customer_name: trx.customer_name,
+      grand_total: trx.grand_total,
+      restoredItems
+    }
+  };
+}
+
+export async function executeDeleteHoldOrder(operatorUser, params) {
+  if (!canPerformAction(operatorUser.role, 'delete_hold_order')) {
+    return {
+      success: false,
+      error: getRoleActionDeniedMessage(operatorUser, 'menghapus pesanan hold (Open Bill)')
+    };
+  }
+
+  const invoiceNumber = params.invoice_number?.trim();
+  if (!invoiceNumber) {
+    return { success: false, error: 'Nomor invoice pesanan hold wajib disertakan.' };
+  }
+
+  let trxs = [];
+  if (operatorUser.role === 'super_admin') {
+    trxs = await sql`
+      SELECT * FROM transactions 
+      WHERE (status = 'hold' OR payment_status = 'hold') AND (invoice_number ILIKE ${invoiceNumber} OR id = ${invoiceNumber})
+      LIMIT 1;
+    `;
+  } else {
+    trxs = await sql`
+      SELECT * FROM transactions 
+      WHERE (status = 'hold' OR payment_status = 'hold') AND (invoice_number ILIKE ${invoiceNumber} OR id = ${invoiceNumber}) AND tenant_id = ${operatorUser.tenant_id}
+      LIMIT 1;
+    `;
+  }
+
+  if (trxs.length === 0) {
+    return { success: false, error: `Pesanan hold dengan nomor invoice "${invoiceNumber}" tidak ditemukan.` };
+  }
+
+  const trx = trxs[0];
+  await sql`DELETE FROM transactions WHERE id = ${trx.id};`;
+
+  return {
+    success: true,
+    invoice_number: trx.invoice_number,
+    customer_name: trx.customer_name,
+    grand_total: trx.grand_total
+  };
+}

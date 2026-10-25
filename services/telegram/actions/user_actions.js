@@ -141,3 +141,57 @@ export async function executeCreateUser(operatorUser, params) {
     }
   };
 }
+
+export async function executeDeleteUser(operatorUser, params) {
+  if (!canPerformAction(operatorUser.role, 'delete_user')) {
+    return {
+      success: false,
+      error: getRoleActionDeniedMessage(operatorUser, 'menghapus akun pengguna')
+    };
+  }
+
+  const query = (params.username || params.name || '').trim().replace(/^@/, '');
+  if (!query) {
+    return { success: false, error: 'Username atau nama pengguna yang ingin dihapus wajib disertakan.' };
+  }
+
+  let users = [];
+  if (operatorUser.role === 'super_admin') {
+    users = await sql`
+      SELECT id, name, username, telegram_username, role, tenant_id
+      FROM users
+      WHERE username ILIKE ${query} OR telegram_username ILIKE ${query} OR name ILIKE ${query}
+      LIMIT 1;
+    `;
+  } else {
+    users = await sql`
+      SELECT id, name, username, telegram_username, role, tenant_id
+      FROM users
+      WHERE (username ILIKE ${query} OR telegram_username ILIKE ${query} OR name ILIKE ${query})
+        AND tenant_id = ${operatorUser.tenant_id}
+      LIMIT 1;
+    `;
+  }
+
+  if (users.length === 0) {
+    return { success: false, error: `Pengguna dengan username/nama "${query}" tidak ditemukan.` };
+  }
+
+  const targetUser = users[0];
+  if (targetUser.id === 'usr_superadmin' || targetUser.role === 'super_admin') {
+    return { success: false, error: 'Akun Super Administrator utama tidak boleh dihapus demi keamanan sistem.' };
+  }
+
+  await sql`DELETE FROM users WHERE id = ${targetUser.id};`;
+
+  return {
+    success: true,
+    user: {
+      id: targetUser.id,
+      name: targetUser.name,
+      username: targetUser.username,
+      telegram_username: targetUser.telegram_username,
+      role: targetUser.role
+    }
+  };
+}

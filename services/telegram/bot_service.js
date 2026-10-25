@@ -1,8 +1,9 @@
 import { sql } from '../../lib/db.js';
 import { canPerformAction, getRoleActionDeniedMessage } from './rbac.js';
-import { executeCreateUser } from './actions/user_actions.js';
-import { executeCreateTenant, executeCreateCategory } from './actions/tenant_actions.js';
-import { executeCreateTransaction } from './actions/pos_actions.js';
+import { executeCreateUser, executeDeleteUser } from './actions/user_actions.js';
+import { executeCreateTenant, executeCreateCategory, executeDeleteCategory, executeDeleteTenant } from './actions/tenant_actions.js';
+import { executeCreateTransaction, executeCancelTransaction, executeDeleteHoldOrder } from './actions/pos_actions.js';
+import { executeCreateProduct, executeDeleteProduct, executeUpdateProductStock } from './actions/product_actions.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -294,6 +295,22 @@ const GEMINI_TOOLS = [
         }
       },
       {
+        name: 'createProduct',
+        description: 'Membuat produk baru di katalog toko POS (nama produk, harga, stok awal, kategori, dan cabang toko).',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING', description: 'Nama produk baru' },
+            price: { type: 'NUMBER', description: 'Harga jual produk' },
+            stock: { type: 'NUMBER', description: 'Jumlah stok awal' },
+            category_name: { type: 'STRING', description: 'Nama kategori produk (contoh: makanan, minuman, buket, dsb)' },
+            tenant_name: { type: 'STRING', description: 'Nama cabang toko' },
+            sku: { type: 'STRING', description: 'Kode SKU produk (opsional)' }
+          },
+          required: ['name', 'price']
+        }
+      },
+      {
         name: 'createTransaction',
         description: 'Membuat transaksi kasir baru untuk pembelian produk. Jika pembayaran QRIS, sistem akan otomatis mengirimkan gambar QRIS Dinamis ke Telegram.',
         parameters: {
@@ -316,6 +333,86 @@ const GEMINI_TOOLS = [
             tenant_name: { type: 'STRING', description: 'Nama cabang toko jika operator super admin' }
           },
           required: ['items', 'payment_method']
+        }
+      },
+      {
+        name: 'cancelTransaction',
+        description: 'Membatalkan transaksi penjualan yang sudah selesai atau pending berdasarkan nomor invoice (contoh: INV-20261025-3375). Stok barang yang dibeli otomatis dikembalikan ke inventaris toko.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            invoice_number: { type: 'STRING', description: 'Nomor invoice transaksi (contoh: INV-20261025-3375)' },
+            reason: { type: 'STRING', description: 'Alasan pembatalan transaksi' }
+          },
+          required: ['invoice_number']
+        }
+      },
+      {
+        name: 'deleteHoldOrder',
+        description: 'Membatalkan dan menghapus pesanan hold (Open Bill) yang belum dibayar berdasarkan nomor invoice atau id transaksi.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            invoice_number: { type: 'STRING', description: 'Nomor invoice pesanan hold' }
+          },
+          required: ['invoice_number']
+        }
+      },
+      {
+        name: 'deleteUser',
+        description: 'Menghapus akun kasir, manager, atau staf dari sistem berdasarkan username login POS atau username Telegram (@). Akun Super Administrator utama dilindungi.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            username: { type: 'STRING', description: 'Username login POS atau username Telegram diawali @' }
+          },
+          required: ['username']
+        }
+      },
+      {
+        name: 'deleteProduct',
+        description: 'Menghapus produk dari katalog toko berdasarkan nama produk atau SKU.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            product_name: { type: 'STRING', description: 'Nama produk atau SKU yang ingin dihapus' }
+          },
+          required: ['product_name']
+        }
+      },
+      {
+        name: 'updateProductStock',
+        description: 'Menambah atau mengatur ulang jumlah stok produk di etalase toko.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            product_name: { type: 'STRING', description: 'Nama produk yang ingin diubah stoknya' },
+            quantity: { type: 'NUMBER', description: 'Jumlah unit (misal: 10)' },
+            action_type: { type: 'STRING', description: 'Pilih "add" untuk menambah stok, atau "set" untuk mengatur ulang total stok. Default "add".' }
+          },
+          required: ['product_name', 'quantity']
+        }
+      },
+      {
+        name: 'deleteCategory',
+        description: 'Menghapus kategori produk berdasarkan nama kategori.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            category_name: { type: 'STRING', description: 'Nama kategori yang ingin dihapus' }
+          },
+          required: ['category_name']
+        }
+      },
+      {
+        name: 'deleteTenant',
+        description: 'Menghapus cabang atau tenant toko beserta seluruh data terkait. Khusus Super Admin.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            tenant_name: { type: 'STRING', description: 'Nama cabang toko yang ingin dihapus' }
+          },
+          required: ['tenant_name']
         }
       }
     ]
@@ -351,12 +448,18 @@ async function handleToolExecution(operatorUser, chatId, functionCall) {
     return `Kategori berhasil dibuat:\n- Nama: ${res.category.name}\n- Cabang: ${res.category.tenant_name}`;
   }
 
+  if (name === 'createProduct') {
+    const res = await executeCreateProduct(operatorUser, args);
+    if (!res.success) return `Gagal membuat produk: ${res.error}`;
+    return `Produk baru berhasil dibuat:\n- Nama: ${res.product.name}\n- Harga: Rp ${Number(res.product.price).toLocaleString('id-ID')}\n- Stok Awal: ${res.product.stock} unit\n- Kategori: ${res.product.category_name}\n- Cabang: ${res.product.tenant_name}\n- SKU: ${res.product.sku}`;
+  }
+
   if (name === 'createTransaction') {
     const res = await executeCreateTransaction(operatorUser, args);
     if (!res.success) return `Gagal membuat transaksi: ${res.error}`;
 
     const t = res.transaction;
-    const itemListStr = t.items.map(it => `- ${it.qty}x ${it.name} (Rp ${it.subtotal.toLocaleString('id-ID')})`).join('\n');
+    const itemListStr = t.items.map(it => `- ${it.qty || it.quantity}x ${it.name} (Rp ${it.subtotal.toLocaleString('id-ID')})`).join('\n');
 
     if (res.isQris && res.qrBuffer) {
       // Send Photo with Dynamic QRIS
@@ -367,6 +470,49 @@ async function handleToolExecution(operatorUser, chatId, functionCall) {
 
     // Cash transaction
     return `Transaksi Tunai Berhasil:\n- Invoice: ${t.invoice_number}\n- Kasir: ${t.cashier_name}\n- Cabang: ${t.tenant_name}\n- Pelanggan: ${t.customer_name}\n\nItem Belanja:\n${itemListStr}\n\nTotal Pembayaran: Rp ${t.grand_total.toLocaleString('id-ID')}\nStatus: Lunas (Selesai)`;
+  }
+
+  if (name === 'cancelTransaction') {
+    const res = await executeCancelTransaction(operatorUser, args);
+    if (!res.success) return `Gagal membatalkan transaksi: ${res.error}`;
+    const t = res.transaction;
+    return `Transaksi ${t.invoice_number} berhasil DIBATALKAN:\n- Pelanggan: ${t.customer_name || 'Pelanggan'}\n- Nilai Transaksi: Rp ${Number(t.grand_total).toLocaleString('id-ID')}\n- Stok produk yang dikembalikan: ${t.restoredItems.join(', ') || 'Tidak ada stok'}\n- Status: Dibatalkan (Stok barang telah dipulihkan ke etalase toko)`;
+  }
+
+  if (name === 'deleteHoldOrder') {
+    const res = await executeDeleteHoldOrder(operatorUser, args);
+    if (!res.success) return `Gagal menghapus pesanan hold: ${res.error}`;
+    return `Pesanan hold (Open Bill) ${res.invoice_number} (Rp ${Number(res.grand_total).toLocaleString('id-ID')}) berhasil dibatalkan dan dihapus permanen dari sistem.`;
+  }
+
+  if (name === 'deleteUser') {
+    const res = await executeDeleteUser(operatorUser, args);
+    if (!res.success) return `Gagal menghapus user: ${res.error}`;
+    return `Pengguna ${res.user.name} (@${res.user.telegram_username || res.user.username}) dengan role ${res.user.role.toUpperCase()} berhasil dihapus dari sistem.`;
+  }
+
+  if (name === 'deleteProduct') {
+    const res = await executeDeleteProduct(operatorUser, args);
+    if (!res.success) return `Gagal menghapus produk: ${res.error}`;
+    return `Produk "${res.product.name}" (SKU: ${res.product.sku}) di cabang ${res.product.tenant_name} berhasil dihapus dari katalog toko.`;
+  }
+
+  if (name === 'updateProductStock') {
+    const res = await executeUpdateProductStock(operatorUser, args);
+    if (!res.success) return `Gagal mengubah stok: ${res.error}`;
+    return `Stok produk "${res.product.name}" berhasil diperbarui:\n- Stok Sebelumnya: ${res.product.oldStock} unit\n- Stok Sekarang: ${res.product.newStock} unit\n- Cabang: ${res.product.tenant_name}`;
+  }
+
+  if (name === 'deleteCategory') {
+    const res = await executeDeleteCategory(operatorUser, args);
+    if (!res.success) return `Gagal menghapus kategori: ${res.error}`;
+    return `Kategori "${res.category.name}" di cabang ${res.category.tenant_name} berhasil dihapus. Produk terkait tetap aman dan telah dilepas dari kategori tersebut.`;
+  }
+
+  if (name === 'deleteTenant') {
+    const res = await executeDeleteTenant(operatorUser, args);
+    if (!res.success) return `Gagal menghapus cabang: ${res.error}`;
+    return `Cabang/Tenant "${res.tenant.name}" beserta seluruh data produk, transaksi, dan akun stafnya berhasil dihapus permanen.`;
   }
 
   return 'Fungsi tidak dikenali.';
@@ -441,7 +587,16 @@ ATURAN KOMUNIKASI & EKSEKUSI (SANGAT KETAT):
    - Waktu dan tanggal pada data di atas sudah dalam format Waktu Indonesia Barat (WIB).
    - Jika pengguna menanyakan laporan transaksi tanggal atau cabang tertentu (misal: "Ria Florist tanggal 25 Oktober"), rujuklah langsung ringkasan cabang dan daftar transaksi di atas. Hitung total transaksi, omset, dan rincian produk secara persis sesuai data database.
 
-4. FORMAT TEKS BERSIH:
+4. ATURAN MANAJEMEN DATA & PENGHAPUSAN (KONTROL PENUH SESUAI ROLE):
+   - Kamu memiliki kontrol penuh untuk mengeksekusi aksi pembatalan, penghapusan, dan pembaruan data sesuai role pengguna (Super Admin memiliki izin penuh di seluruh menu).
+   - Membatalkan Transaksi: Jika pengguna meminta membatalkan transaksi (misal: "batalkan transaksi INV-...", "void/cancel invoice ..."), panggil fungsi cancelTransaction. Stok barang yang dibatalkan akan otomatis dikembalikan ke katalog toko.
+   - Menghapus Pesanan Hold (Open Bill): Jika pengguna meminta membatalkan atau menghapus pesanan hold (misal: "hapus open bill INV-...", "hapus pesanan hold ..."), panggil fungsi deleteHoldOrder.
+   - Menghapus Pengguna/Kasir: Jika pengguna meminta menghapus kasir atau staf (misal: "hapus user kasir1", "delete akun @kasir1"), panggil fungsi deleteUser.
+   - Menghapus Produk: Jika pengguna meminta menghapus produk dari katalog (misal: "hapus produk Bunga Mawar Merah"), panggil fungsi deleteProduct.
+   - Mengubah/Tambah Stok: Jika pengguna meminta menambah atau mengubah stok produk (misal: "tambah stok Bunga Mawar 20", "set stok Kopi Susu jadi 50"), panggil fungsi updateProductStock.
+   - Menghapus Kategori atau Cabang Toko: Panggil fungsi deleteCategory atau deleteTenant.
+
+5. FORMAT TEKS BERSIH:
    - Jawab langsung apa yang ditanyakan.
    - DILARANG menggunakan bintang ganda (**), garis bawah (_), atau karakter bertumpuk.
    - Gunakan tanda strip (-) sederhana untuk daftar.
