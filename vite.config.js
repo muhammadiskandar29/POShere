@@ -904,6 +904,9 @@ function monolithicApiPlugin() {
 
 export default defineConfig({
   plugins: [monolithicApiPlugin()],
+  build: {
+    chunkSizeWarningLimit: 1500
+  },
   server: {
     port: 5173,
     host: true

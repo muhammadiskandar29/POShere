@@ -1,4 +1,4 @@
-import { sql } from '../../db.js';
+import { sql } from '../../../lib/db.js';
 import { canPerformAction, getRoleActionDeniedMessage } from '../rbac.js';
 
 export const REQUIRED_USER_FIELDS = [

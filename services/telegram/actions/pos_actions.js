@@ -1,4 +1,4 @@
-import { sql } from '../../db.js';
+import { sql } from '../../../lib/db.js';
 import { canPerformAction, getRoleActionDeniedMessage } from '../rbac.js';
 import { convertStaticQrisToDynamic } from '../../../src/utils/qris.js';
 import QRCode from 'qrcode';

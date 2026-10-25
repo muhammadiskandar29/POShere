@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { handleTelegramUpdate } from './api/telegram/bot_service.js';
+import { handleTelegramUpdate } from './services/telegram/bot_service.js';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {

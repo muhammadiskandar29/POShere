@@ -1,4 +1,4 @@
-import { sql, JWT_SECRET } from '../db.js';
+import { sql, JWT_SECRET } from '../_db.js';
 import jwt from 'jsonwebtoken';
 
 async function parseBody(req) {

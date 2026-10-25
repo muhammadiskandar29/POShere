@@ -1,4 +1,4 @@
-import { sql } from '../db.js';
+import { sql } from '../_db.js';
 
 function sendJson(res, statusCode, data) {
   res.setHeader('Access-Control-Allow-Origin', '*');

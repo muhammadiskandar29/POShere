@@ -1,4 +1,4 @@
-import { JWT_SECRET } from '../db.js';
+import { JWT_SECRET } from '../_db.js';
 import jwt from 'jsonwebtoken';
 
 function sendJson(res, statusCode, data) {

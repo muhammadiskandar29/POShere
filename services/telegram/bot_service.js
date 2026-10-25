@@ -1,4 +1,4 @@
-import { sql } from '../db.js';
+import { sql } from '../../lib/db.js';
 import { canPerformAction, getRoleActionDeniedMessage } from './rbac.js';
 import { executeCreateUser } from './actions/user_actions.js';
 import { executeCreateTenant, executeCreateCategory } from './actions/tenant_actions.js';

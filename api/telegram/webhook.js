@@ -1,4 +1,4 @@
-import { handleTelegramUpdate } from './bot_service.js';
+import { handleTelegramUpdate } from '../../services/telegram/bot_service.js';
 
 async function parseBody(req) {
   if (req.body) {
