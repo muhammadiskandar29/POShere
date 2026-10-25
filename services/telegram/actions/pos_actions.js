@@ -87,6 +87,7 @@ export async function executeCreateTransaction(operatorUser, params) {
       name: matchedProduct.name,
       price: price,
       qty: reqQty,
+      quantity: reqQty,
       subtotal: subtotal
     });
   }

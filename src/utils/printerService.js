@@ -115,7 +115,8 @@ export class ThermalPrinterService {
     // Item List
     (trx.items || []).forEach(item => {
       cmd += `${item.name}\n`;
-      const qtyPrice = `  ${item.quantity} x Rp ${Number(item.price).toLocaleString('id-ID')}`;
+      const itemQty = item.quantity || item.qty || 1;
+      const qtyPrice = `  ${itemQty} x Rp ${Number(item.price).toLocaleString('id-ID')}`;
       const subtotal = `Rp ${Number(item.subtotal).toLocaleString('id-ID')}`;
       cmd += this.formatLine(qtyPrice, subtotal, maxChars) + '\n';
     });

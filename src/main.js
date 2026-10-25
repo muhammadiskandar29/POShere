@@ -1238,7 +1238,7 @@ function renderTransactionsView() {
                   `}
                 </td>
                 <td style="font-size: 0.75rem;">
-                  ${(trx.items || []).map(it => `${it.name} (${it.quantity}x)`).join(', ')}
+                  ${(trx.items || []).map(it => `${it.name} (${it.quantity || it.qty || 1}x)`).join(', ')}
                 </td>
                 <td style="font-weight: 800; color: var(--text-main);">${formatRupiah(trx.grand_total)}</td>
                 <td>
@@ -1309,7 +1309,8 @@ function renderReportsView() {
     (t.items || []).forEach(item => {
       const prodInfo = state.products.find(p => p.id === item.product_id);
       const costPerUnit = prodInfo ? Number(prodInfo.cost_price || 0) : Math.round(Number(item.price || 0) * 0.5);
-      const itemCostTotal = costPerUnit * item.quantity;
+      const itemQty = Number(item.quantity || item.qty || 1);
+      const itemCostTotal = costPerUnit * itemQty;
       totalCost += itemCostTotal;
 
       const pKey = item.product_id || item.name;
@@ -1322,7 +1323,7 @@ function renderReportsView() {
           profit: 0
         };
       }
-      productSalesMap[pKey].qty += item.quantity;
+      productSalesMap[pKey].qty += itemQty;
       productSalesMap[pKey].totalSales += item.subtotal;
       productSalesMap[pKey].totalCost += itemCostTotal;
       productSalesMap[pKey].profit += (item.subtotal - itemCostTotal);
@@ -2171,7 +2172,7 @@ function renderModal() {
             <div style="border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; padding: 0.5rem 0; margin-bottom: 0.5rem;">
               ${(trx.items || []).map(it => `
                 <div style="display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.25rem;">
-                  <span>${it.name} x${it.quantity}</span>
+                  <span>${it.name} x${it.quantity || it.qty || 1}</span>
                   <span>${formatRupiah(it.subtotal)}</span>
                 </div>
               `).join('')}
@@ -2736,13 +2737,13 @@ function renderModal() {
                       </div>
                       <div style="text-align: right;">
                         <div style="font-size: 1.15rem; font-weight: 800; color: #b45309;">${formatRupiah(b.grand_total)}</div>
-                        <div style="font-size: 0.68rem; color: var(--text-muted);">${(b.items || []).reduce((s, it) => s + it.quantity, 0)} item</div>
+                        <div style="font-size: 0.68rem; color: var(--text-muted);">${(b.items || []).reduce((s, it) => s + (it.quantity || it.qty || 1), 0)} item</div>
                       </div>
                     </div>
 
                     <!-- Ringkasan Item -->
                     <div style="background: white; border-radius: 6px; padding: 0.45rem 0.65rem; font-size: 0.74rem; color: var(--text-main); border: 1px dashed #fde68a;">
-                      ${(b.items || []).map(it => `<span>${it.name} <strong>x${it.quantity}</strong></span>`).join(' • ')}
+                      ${(b.items || []).map(it => `<span>${it.name} <strong>x${it.quantity || it.qty || 1}</strong></span>`).join(' • ')}
                     </div>
 
                     <!-- Tombol Aksi -->
@@ -3153,7 +3154,8 @@ window.cancelCompletedTransaction = async function(trxId) {
     for (const item of (trx.items || [])) {
       const prod = state.products.find(p => p.id === item.product_id);
       if (prod) {
-        const restoredStock = Number(prod.stock || 0) + Number(item.quantity || 0);
+        const itemQty = Number(item.quantity || item.qty || 0);
+        const restoredStock = Number(prod.stock || 0) + itemQty;
         prod.stock = restoredStock;
         await saveToNeonServer('products', { ...prod, stock: restoredStock });
         await dbService.updateProduct(prod.id, { stock: restoredStock });
@@ -4342,7 +4344,7 @@ function renderCustomerDisplay() {
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; border-radius: 8px; background: #fafafa; border: 1px solid #f1f5f9;">
                   <div>
                     <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">${item.name}</div>
-                    <div style="font-size: 0.72rem; color: var(--text-muted);">${formatRupiah(item.price)} x ${item.quantity}</div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted);">${formatRupiah(item.price)} x ${item.quantity || item.qty || 1}</div>
                   </div>
                   <div style="font-weight: 800; font-size: 0.88rem; color: var(--text-main);">
                     ${formatRupiah(item.subtotal)}

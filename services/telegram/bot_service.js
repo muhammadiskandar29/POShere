@@ -121,14 +121,15 @@ export async function getStoreContext(user) {
     let recentTrx = [];
     if (tenantFilter) {
       recentTrx = await sql`
-        SELECT invoice_number, cashier_name, payment_method_name, status, grand_total, items, created_at
-        FROM transactions
-        WHERE tenant_id = ${tenantFilter}
-        ORDER BY created_at DESC LIMIT 30;
+        SELECT t.invoice_number, t.cashier_name, t.customer_name, t.payment_method_name, t.status, t.grand_total, t.items, t.created_at, ten.name as tenant_name
+        FROM transactions t
+        LEFT JOIN tenants ten ON t.tenant_id = ten.id
+        WHERE t.tenant_id = ${tenantFilter}
+        ORDER BY t.created_at DESC LIMIT 30;
       `;
     } else {
       recentTrx = await sql`
-        SELECT t.invoice_number, t.cashier_name, t.payment_method_name, t.status, t.grand_total, t.items, t.created_at, ten.name as tenant_name
+        SELECT t.invoice_number, t.cashier_name, t.customer_name, t.payment_method_name, t.status, t.grand_total, t.items, t.created_at, ten.name as tenant_name
         FROM transactions t
         LEFT JOIN tenants ten ON t.tenant_id = ten.id
         ORDER BY t.created_at DESC LIMIT 30;
@@ -136,8 +137,7 @@ export async function getStoreContext(user) {
     }
 
     // Calculate Today's metrics (Asia/Jakarta timezone)
-    const nowJakarta = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
-    const todayStr = nowJakarta.toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
 
     let todayTrxCount = 0;
     let todaySuccessTrxCount = 0;
@@ -146,32 +146,75 @@ export async function getStoreContext(user) {
     const paymentBreakdown = {};
     const cashierBreakdown = {};
     const itemSalesCount = {};
+    const tenantBreakdowns = {};
+    const recentTrxList = [];
 
     recentTrx.forEach(trx => {
-      const trxDate = new Date(trx.created_at).toISOString().split('T')[0];
-      const isToday = (trxDate === todayStr);
+      const trxDateWIB = new Date(trx.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+      const trxTimeWIB = new Date(trx.created_at).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const tName = trx.tenant_name || 'Semua Cabang';
+      const isToday = (trxDateWIB === todayStr);
       const isCancelled = (trx.status === 'dibatalkan' || trx.status === 'cancelled');
+      const val = Number(trx.grand_total) || 0;
+      const statusLabel = isCancelled ? 'DIBATALKAN' : (trx.status === 'hold' ? 'HOLD' : 'SELESAI');
+
+      const itemsDetail = Array.isArray(trx.items) 
+        ? trx.items.map(it => `${it.name || 'Produk'} (${it.quantity || it.qty || 1}x)`).join(', ')
+        : '-';
+
+      recentTrxList.push({
+        invoice: trx.invoice_number,
+        wibDate: trxDateWIB,
+        wibTime: trxTimeWIB,
+        tenant: tName,
+        cashier: trx.cashier_name || 'Kasir',
+        customer: trx.customer_name || 'Pelanggan',
+        status: statusLabel,
+        total: val,
+        payment: trx.payment_method_name || 'QRIS/Cash',
+        items: itemsDetail
+      });
+
+      if (!tenantBreakdowns[tName]) {
+        tenantBreakdowns[tName] = {
+          todayTrxCount: 0,
+          todaySuccessTrxCount: 0,
+          todayCancelledTrxCount: 0,
+          todayTotalSales: 0,
+          paymentBreakdown: {},
+          cashierBreakdown: {},
+          itemSalesCount: {}
+        };
+      }
 
       if (isToday) {
         todayTrxCount++;
+        tenantBreakdowns[tName].todayTrxCount++;
+
         if (isCancelled) {
           todayCancelledTrxCount++;
+          tenantBreakdowns[tName].todayCancelledTrxCount++;
         } else {
           todaySuccessTrxCount++;
-          const val = Number(trx.grand_total) || 0;
+          tenantBreakdowns[tName].todaySuccessTrxCount++;
+
           todayTotalSales += val;
+          tenantBreakdowns[tName].todayTotalSales += val;
 
           const pm = trx.payment_method_name || 'Lainnya';
           paymentBreakdown[pm] = (paymentBreakdown[pm] || 0) + val;
+          tenantBreakdowns[tName].paymentBreakdown[pm] = (tenantBreakdowns[tName].paymentBreakdown[pm] || 0) + val;
 
           const cName = trx.cashier_name || 'Kasir';
           cashierBreakdown[cName] = (cashierBreakdown[cName] || 0) + 1;
+          tenantBreakdowns[tName].cashierBreakdown[cName] = (tenantBreakdowns[tName].cashierBreakdown[cName] || 0) + 1;
 
           if (Array.isArray(trx.items)) {
             trx.items.forEach(it => {
               const iName = it.name || 'Produk';
-              const qty = Number(it.qty) || 1;
+              const qty = Number(it.quantity || it.qty || 1);
               itemSalesCount[iName] = (itemSalesCount[iName] || 0) + qty;
+              tenantBreakdowns[tName].itemSalesCount[iName] = (tenantBreakdowns[tName].itemSalesCount[iName] || 0) + qty;
             });
           }
         }
@@ -193,6 +236,8 @@ export async function getStoreContext(user) {
       paymentBreakdown,
       cashierBreakdown,
       topItems,
+      tenantBreakdowns,
+      recentTrxList,
       totalProductsCount,
       lowStockProducts: lowStockProducts.map(p => `- ${p.name}: stok sisa ${p.stock} (Rp ${Number(p.price).toLocaleString('id-ID')})${p.tenant_name ? ` [${p.tenant_name}]` : ''}`)
     };
@@ -332,19 +377,39 @@ export async function askGemini(user, storeContext, question, chatId) {
   const apiKey = GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured in .env.');
 
-  const storeInfoText = storeContext ? `
-[DATA REAL-TIME TOKO POSHERE]
+  let storeInfoText = '';
+  if (storeContext) {
+    const tenantSummaryText = Object.entries(storeContext.tenantBreakdowns || {}).map(([tName, b]) => `
+* Cabang: ${tName}
+  - Transaksi Hari Ini: ${b.todayTrxCount} (${b.todaySuccessTrxCount} Selesai/Berhasil, ${b.todayCancelledTrxCount} Dibatalkan)
+  - Total Omset: Rp ${b.todayTotalSales.toLocaleString('id-ID')}
+  - Metode Pembayaran: ${Object.entries(b.paymentBreakdown).map(([k, v]) => `${k} Rp ${Number(v).toLocaleString('id-ID')}`).join(', ') || 'Belum ada'}
+  - Transaksi per Kasir: ${Object.entries(b.cashierBreakdown).map(([k, v]) => `${k} (${v} transaksi)`).join(', ') || '-'}
+  - Produk Terjual: ${Object.entries(b.itemSalesCount).map(([k, v]) => `${k} (${v} buah total)`).join(', ') || 'Belum ada'}
+`).join('\n');
+
+    const trxTableText = (storeContext.recentTrxList || []).slice(0, 20).map(t => 
+      `- [${t.invoice}] ${t.wibDate} ${t.wibTime} WIB | Cabang: ${t.tenant} | Kasir: ${t.cashier} | Pelanggan: ${t.customer} | Status: ${t.status} | Total: Rp ${t.total.toLocaleString('id-ID')} (${t.payment}) | Item: ${t.items}`
+    ).join('\n');
+
+    storeInfoText = `
+[DATA REAL-TIME TOKO POSHERE (ZONA WAKTU ASIA/JAKARTA - WIB)]
 - Tanggal Hari Ini (WIB): ${storeContext.todayStr}
-- Cabang/Tenant Toko: ${storeContext.tenants || 'POShere Flagship Store'}
-- Total Transaksi Hari Ini: ${storeContext.todayTrxCount} (${storeContext.todaySuccessTrxCount} Berhasil, ${storeContext.todayCancelledTrxCount} Dibatalkan)
-- Total Omset Hari Ini: Rp ${storeContext.todayTotalSales.toLocaleString('id-ID')}
-- Metode Pembayaran: ${Object.entries(storeContext.paymentBreakdown).map(([k, v]) => `${k}: Rp ${Number(v).toLocaleString('id-ID')}`).join(', ') || 'Belum ada transaksi'}
-- Transaksi per Kasir: ${Object.entries(storeContext.cashierBreakdown).map(([k, v]) => `${k}: ${v} trx`).join(', ') || 'Belum ada transaksi'}
-- Produk Terlaris: ${storeContext.topItems.join(', ') || 'Belum ada item terjual'}
-- Katalog Produk: ${storeContext.totalProductsCount} produk
-- Produk Menipis (Stok <= 10):
+- Cabang Terdaftar: ${storeContext.tenants || 'POShere Flagship Store'}
+- Total Transaksi Keseluruhan Hari Ini: ${storeContext.todayTrxCount} (${storeContext.todaySuccessTrxCount} Berhasil, ${storeContext.todayCancelledTrxCount} Dibatalkan)
+- Total Omset Keseluruhan Hari Ini: Rp ${storeContext.todayTotalSales.toLocaleString('id-ID')}
+- Total Katalog Produk: ${storeContext.totalProductsCount} produk
+
+[RINGKASAN PENJUALAN HARI INI PER CABANG / TENANT]
+${tenantSummaryText || '- Belum ada data cabang'}
+
+[DAFTAR TRANSAKSI SISTEM DATABASE TERAKHIR (SUMBER KEBENARAN TUNGGAL)]
+${trxTableText || '- Belum ada transaksi'}
+
+[PRODUK MENIPIS (STOK <= 10)]
 ${storeContext.lowStockProducts.length > 0 ? storeContext.lowStockProducts.join('\n') : 'Semua stok produk saat ini aman (di atas 10 unit)'}
-` : '';
+`;
+  }
 
   const systemInstruction = `
 Kamu adalah asisten bisnis eksekutif untuk sistem kasir POShere.
@@ -370,7 +435,13 @@ ATURAN KOMUNIKASI & EKSEKUSI (SANGAT KETAT):
 2. ATURAN TRANSAKSI KASIR (createTransaction):
    - Jika pengguna meminta transaksi kasir, panggil fungsi createTransaction dengan daftar produk dan metode pembayaran yang diminta.
 
-3. FORMAT TEKS BERSIH:
+3. ATURAN LAPORAN PENJUALAN & TRANSAKSI (SANGAT KRUSIAL):
+   - Gunakan HANYA data dari [RINGKASAN PENJUALAN HARI INI PER CABANG / TENANT] dan [DAFTAR TRANSAKSI SISTEM DATABASE TERAKHIR] sebagai sumber kebenaran tunggal.
+   - DILARANG MENGARANG atau menambahkan transaksi yang pernah dibahas di riwayat percakapan sebelumnya.
+   - Waktu dan tanggal pada data di atas sudah dalam format Waktu Indonesia Barat (WIB).
+   - Jika pengguna menanyakan laporan transaksi tanggal atau cabang tertentu (misal: "Ria Florist tanggal 25 Oktober"), rujuklah langsung ringkasan cabang dan daftar transaksi di atas. Hitung total transaksi, omset, dan rincian produk secara persis sesuai data database.
+
+4. FORMAT TEKS BERSIH:
    - Jawab langsung apa yang ditanyakan.
    - DILARANG menggunakan bintang ganda (**), garis bawah (_), atau karakter bertumpuk.
    - Gunakan tanda strip (-) sederhana untuk daftar.
