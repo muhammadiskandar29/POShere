@@ -47,6 +47,7 @@ const state = {
   searchQuery: '',
   cart: [],
   isMobileSidebarOpen: false,
+  isMobileCartOpen: false,
   isCustomerDisplayOpen: false, // Dual screen Customer Facing Display
   selectedCheckoutPayment: null, // Selected payment method in checkout
   checkoutStep: 'select_payment', // 'select_payment' -> 'customer_confirm' -> 'final_confirm'
@@ -277,6 +278,9 @@ function updateCartQty(productId, delta) {
 
   if (newQty <= 0) {
     state.cart = state.cart.filter(it => it.product_id !== productId);
+    if (state.cart.length === 0) {
+      state.isMobileCartOpen = false;
+    }
   } else {
     if (product && newQty > product.stock) {
       showToast(`Maksimal stok tersedia adalah ${product.stock} pcs`, 'warning');
@@ -300,12 +304,14 @@ async function clearCart() {
   });
   if (confirmed) {
     state.cart = [];
+    state.isMobileCartOpen = false;
     renderApp();
   }
 }
 
 // Open Modals
 function openModal(type, data = null) {
+  state.isMobileCartOpen = false;
   state.modalState = { isOpen: true, type, data };
   renderApp();
   if (type === 'payment_checkout') {
@@ -626,17 +632,26 @@ function renderPosView() {
         </div>
       </section>
 
-      <section class="cart-panel">
+      <!-- Mobile Bottom Sheet Backdrop -->
+      <div class="cart-mobile-backdrop ${state.isMobileCartOpen ? 'open' : ''}" onclick="window.closeMobileCart()"></div>
+
+      <section class="cart-panel ${state.isMobileCartOpen ? 'mobile-drawer-open' : ''}">
+        <div class="cart-mobile-handle-bar" onclick="window.closeMobileCart()">
+          <div class="cart-mobile-handle"></div>
+        </div>
         <div class="cart-header">
           <div style="flex: 1;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
               <h3 style="font-size: 0.95rem; font-weight: 700; color: #1e1b4b;">Pesanan Saat Ini</h3>
-              ${state.cart.length > 0 ? `
-                <button class="btn-clear-cart" onclick="window.clearCart()" title="Kosongkan Keranjang">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  <span>Reset</span>
-                </button>
-              ` : ''}
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                ${state.cart.length > 0 ? `
+                  <button class="btn-clear-cart" onclick="window.clearCart()" title="Kosongkan Keranjang">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    <span>Reset</span>
+                  </button>
+                ` : ''}
+                <button class="cart-mobile-close-btn" onclick="window.closeMobileCart()" title="Tutup Keranjang">&times;</button>
+              </div>
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; flex-wrap: wrap;">
               <span class="cart-badge-count">${totalQty} Item Dipilih</span>
@@ -2855,6 +2870,16 @@ window.toggleSidebar = function() {
   renderApp();
 };
 
+window.openMobileCart = function() {
+  state.isMobileCartOpen = true;
+  renderApp();
+};
+
+window.closeMobileCart = function() {
+  state.isMobileCartOpen = false;
+  renderApp();
+};
+
 window.addToCart = addToCart;
 window.updateCartQty = updateCartQty;
 window.clearCart = clearCart;
@@ -2870,6 +2895,7 @@ window.closeModal = closeModal;
 // 1. Klik Bayar/Checkout -> Buka Modal Pilih Metode Pembayaran (Cash, QRIS, Transfer, dll)
 window.startCheckout = function() {
   if (state.cart.length === 0) return;
+  state.isMobileCartOpen = false;
   state.isCustomerDisplayOpen = false;
   openModal('payment_select_method');
 };
@@ -4663,12 +4689,12 @@ function renderApp() {
       </main>
     </div>
     ${(state.currentView === 'pos' && state.cart.length > 0) ? `
-      <div class="mobile-sticky-cart-bar" onclick="document.querySelector('.cart-panel')?.scrollIntoView({ behavior: 'smooth' })">
+      <div class="mobile-sticky-cart-bar" onclick="window.openMobileCart()">
         <div class="m-cart-summary">
           <span class="m-cart-badge">${totalQty} Item</span>
           <span class="m-cart-total">${formatRupiah(subtotal)}</span>
         </div>
-        <button class="m-cart-btn" onclick="event.stopPropagation(); window.startCheckout()">
+        <button class="m-cart-btn" onclick="event.stopPropagation(); window.openMobileCart()">
           <span>Lihat Pesanan & Bayar</span>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
