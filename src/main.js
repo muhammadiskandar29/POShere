@@ -1650,78 +1650,400 @@ function renderPrinterView() {
   const isBluetoothSupported = printerService.isBluetoothSupported();
   const isSerialSupported = printerService.isSerialSupported();
   const connected = printerService.isConnected;
+  const pSet = printerService.settings || {};
+  const deviceName = printerService.connectedDeviceName || (connected ? 'Mesin Cetak Terhubung' : '');
+  const methodLabel = printerService.connectionMethod === 'bluetooth' ? 'Bluetooth BLE' : (printerService.connectionMethod === 'usb_serial' ? 'Kabel USB / COM' : '');
 
   return `
-    <div style="max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem;">
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+    <div style="max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem;">
+      <!-- Header Banner & Status -->
+      <div class="card" style="padding: 1.25rem 1.5rem; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: #ffffff; border-radius: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
           <div>
-            <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">Koneksi Mesin Cetak Struk (Thermal ESC/POS)</h2>
-            <p style="font-size: 0.78rem; color: var(--text-muted);">
-              Hubungkan printer thermal 58mm / 80mm kasir via Bluetooth atau Kabel USB Serial langsung dari browser!
-            </p>
-          </div>
-          <span class="role-badge ${connected ? 'badge-kasir' : 'badge-owner'}" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-            <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: ${connected ? '#10b981' : '#94a3b8'};"></span>
-            <span>${connected ? 'TERHUBUNG' : 'BELUM TERHUBUNG'}</span>
-          </span>
-        </div>
-
-        <div style="background: #faf5ff; border: 1px solid var(--primary-border); border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary-focus); margin-bottom: 0.25rem;">
-            Mode Mesin Cetak Aktif
-          </div>
-          <p style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.6;">
-            Aplikasi siap mencetak struk kasir otomatis dengan format thermal ESC/POS standar. Jika printer fisik belum dipairing, sistem secara cerdas akan menggunakan <strong>Dialog Cetak Bawaan / Save PDF</strong>.
-          </p>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Lebar Kertas Thermal Printer</label>
-          <select id="printer-paper-width" class="form-control" onchange="window.setPrinterWidth(this.value)">
-            <option value="58" ${printerService.paperWidth === 58 ? 'selected' : ''}>Kertas 58 mm (Standar Printer Bluetooth Mini Kasir)</option>
-            <option value="80" ${printerService.paperWidth === 80 ? 'selected' : ''}>Kertas 80 mm (Printer Desktop Kasir Besar / Auto Cutter)</option>
-          </select>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-top: 1rem;">
-          <!-- Bluetooth Card -->
-          <div style="border: 1px solid var(--border-light); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <div style="font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem;">
-              <span style="color: var(--primary); display: inline-flex;">${getIcon('bluetooth', 16)}</span>
-              <span>Bluetooth Printer</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em;">Hardware Kasir & Cetak Struk</span>
+              <span class="role-badge ${connected ? 'badge-kasir' : 'badge-owner'}" style="font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.35rem;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: ${connected ? '#10b981' : '#94a3b8'};"></span>
+                <span>${connected ? `TERHUBUNG: ${deviceName} (${methodLabel})` : 'BELUM TERHUBUNG FISIK'}</span>
+              </span>
             </div>
-            <p style="font-size: 0.72rem; color: var(--text-muted); flex: 1;">
-              Untuk printer bluetooth mini portable kasir (seperti RPP02N, Panda, Iware, Zywell, dll).
+            <h1 style="font-size: 1.4rem; font-weight: 800; margin: 0; color: #ffffff;">Konfigurasi Multi-Mesin Cetak Struk</h1>
+            <p style="font-size: 0.82rem; color: #94a3b8; margin-top: 0.25rem;">
+              Sesuaikan otomatis dengan beragam tipe mesin thermal (58mm/80mm, Bluetooth, USB Desktop, Buka Laci Kasir RJ11, dan Spooler Windows/Android).
             </p>
-            <button class="btn btn-primary" onclick="window.connectBluetoothPrinter()" ${!isBluetoothSupported ? 'title="Gunakan Chrome/Edge"' : ''}>
-              ${connected ? 'Re-Connect Bluetooth' : 'Hubungkan Bluetooth'}
-            </button>
-            ${!isBluetoothSupported ? `<span style="font-size:0.65rem; color:#ef4444;">Browser perlu Web Bluetooth (Chrome/Edge Android/Win)</span>` : ''}
           </div>
 
-          <!-- USB Serial Card -->
-          <div style="border: 1px solid var(--border-light); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <div style="font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem;">
-              <span style="color: var(--primary); display: inline-flex;">${getIcon('cable', 16)}</span>
-              <span>Kabel USB / COM Serial</span>
-            </div>
-            <p style="font-size: 0.72rem; color: var(--text-muted); flex: 1;">
-              Untuk printer kasir yang dicolok kabel USB ke komputer kasir (Epson, Panda, Xprinter).
-            </p>
-            <button class="btn btn-secondary" onclick="window.connectUsbPrinter()">
-              Hubungkan Kabel USB
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            ${connected ? `
+              <button type="button" class="btn btn-secondary" onclick="window.disconnectPrinter()" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3); font-size: 0.78rem;">
+                Putus Koneksi
+              </button>
+            ` : ''}
+            <button type="button" class="btn btn-primary btn-icon-text" onclick="window.savePrinterSettingsForm(event)" style="font-weight: 700;">
+              ${getIcon('save', 15)} <span>Simpan Pengaturan</span>
             </button>
-            ${!isSerialSupported ? `<span style="font-size:0.65rem; color:#ef4444;">Browser perlu Web Serial (Chrome/Edge Desktop)</span>` : ''}
           </div>
-        </div>
-
-        <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
-          <button class="btn btn-success btn-icon-text" onclick="window.testPrintThermal()">
-            ${getIcon('printer', 15)} <span>Tes Cetak Struk Uji Coba</span>
-          </button>
         </div>
       </div>
+
+      <!-- Main Layout: 2 Columns (Settings Left, Live Preview Right) -->
+      <div style="display: grid; grid-template-columns: minmax(360px, 1.35fr) minmax(320px, 1fr); gap: 1.25rem; align-items: start;">
+        
+        <!-- Left Column: Settings Form -->
+        <form id="printer-settings-form" onsubmit="window.savePrinterSettingsForm(event)" style="display: flex; flex-direction: column; gap: 1.25rem;">
+          
+          <!-- Card 1: Koneksi Fisik Mesin -->
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-weight: 800; font-size: 0.95rem; color: var(--text-main); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span style="color: var(--primary);">${getIcon('monitor', 16)}</span>
+              <span>1. Koneksi Perangkat & Driver Mesin Kasir</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Pilih cara menghubungkan mesin struk kasir Anda ke sistem.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+              <!-- Bluetooth Box -->
+              <div style="border: 1px solid var(--border-light); border-radius: 8px; padding: 0.85rem; background: var(--bg-main); display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="font-weight: 700; font-size: 0.84rem; display: flex; align-items: center; gap: 0.4rem;">
+                  <span style="color: #3b82f6;">${getIcon('bluetooth', 15)}</span>
+                  <span>Printer Bluetooth (BLE)</span>
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-muted); flex: 1;">
+                  Printer mini portable (Panda, RPP02N, Iware, Goojprt, Zjiang, Zywell).
+                </div>
+                <button type="button" class="btn btn-primary" onclick="window.connectBluetoothPrinter()" style="font-size: 0.75rem; padding: 6px 10px;" ${!isBluetoothSupported ? 'disabled title="Gunakan browser Chrome/Edge"' : ''}>
+                  ${connected && printerService.connectionMethod === 'bluetooth' ? 'Re-Connect Bluetooth' : 'Hubungkan Bluetooth'}
+                </button>
+                ${!isBluetoothSupported ? `<span style="font-size:0.65rem; color:#ef4444;">Perlu Web Bluetooth (Chrome/Edge Win/Android)</span>` : ''}
+              </div>
+
+              <!-- USB Serial Box -->
+              <div style="border: 1px solid var(--border-light); border-radius: 8px; padding: 0.85rem; background: var(--bg-main); display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="font-weight: 700; font-size: 0.84rem; display: flex; align-items: center; gap: 0.4rem;">
+                  <span style="color: #10b981;">${getIcon('cable', 15)}</span>
+                  <span>Kabel USB / COM Port</span>
+                </div>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                  <label style="font-size: 0.68rem; color: var(--text-muted); white-space: nowrap;">Baud Rate:</label>
+                  <select id="pset-baud-rate" class="form-control" style="font-size: 0.72rem; padding: 2px 6px; height: auto;" onchange="window.updateLiveReceiptPreview()">
+                    <option value="9600" ${pSet.baudRate == 9600 ? 'selected' : ''}>9600 (Standar)</option>
+                    <option value="19200" ${pSet.baudRate == 19200 ? 'selected' : ''}>19200</option>
+                    <option value="38400" ${pSet.baudRate == 38400 ? 'selected' : ''}>38400</option>
+                    <option value="115200" ${pSet.baudRate == 115200 ? 'selected' : ''}>115200 (High Speed)</option>
+                  </select>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="window.connectUsbPrinter()" style="font-size: 0.75rem; padding: 6px 10px;" ${!isSerialSupported ? 'disabled title="Gunakan browser Chrome/Edge Desktop"' : ''}>
+                  ${connected && printerService.connectionMethod === 'usb_serial' ? 'Re-Connect USB' : 'Hubungkan Kabel USB'}
+                </button>
+                ${!isSerialSupported ? `<span style="font-size:0.65rem; color:#ef4444;">Perlu Web Serial (Chrome/Edge Desktop)</span>` : ''}
+              </div>
+            </div>
+
+            <!-- Connection Fallback Selector -->
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.76rem;">Preferensi Mode Cetak Kasir</label>
+              <select id="pset-connection-type" class="form-control" style="font-size: 0.78rem;" onchange="window.updateLiveReceiptPreview()">
+                <option value="auto" ${pSet.connectionType === 'auto' ? 'selected' : ''}>Otomatis (Thermal Direct jika terkoneksi, atau Dialog Cetak OS)</option>
+                <option value="bluetooth" ${pSet.connectionType === 'bluetooth' ? 'selected' : ''}>Paksa Bluetooth Thermal Printer</option>
+                <option value="usb_serial" ${pSet.connectionType === 'usb_serial' ? 'selected' : ''}>Paksa Kabel USB / COM Serial Printer</option>
+                <option value="browser_dialog" ${pSet.connectionType === 'browser_dialog' ? 'selected' : ''}>Selalu Buka Dialog Print Browser (Windows Driver / Android POS Sunmi)</option>
+              </select>
+              <span style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; display: block;">
+                Pilih <strong>Dialog Print Browser</strong> jika printer Anda menggunakan driver Windows biasa (Epson Spooler) atau mesin Android all-in-one.
+              </span>
+            </div>
+          </div>
+
+          <!-- Card 2: Dimensi Kertas & Karakter Baris -->
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-weight: 800; font-size: 0.95rem; color: var(--text-main); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span style="color: var(--primary);">${getIcon('file-text', 16)}</span>
+              <span>2. Ukuran Kertas & Format Karakter (Dinamis)</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Atur lebar struk agar teks pas dan tidak terpotong ke kanan pada berbagai jenis mesin.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+              <label style="border: 2px solid ${pSet.paperWidth === 58 ? 'var(--primary)' : 'var(--border-light)'}; border-radius: 8px; padding: 0.85rem; cursor: pointer; background: ${pSet.paperWidth === 58 ? 'rgba(99, 102, 241, 0.05)' : 'transparent'}; display: flex; flex-direction: column; gap: 0.35rem;">
+                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                  <input type="radio" name="paper_width_choice" value="58" ${pSet.paperWidth === 58 ? 'checked' : ''} onchange="window.setPrinterPaperWidth(58)">
+                  <strong style="font-size: 0.85rem;">Kertas 58 mm</strong>
+                </div>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">
+                  Printer Bluetooth Mini & Mobile Kasir Portabel (Standar 32 karakter).
+                </span>
+              </label>
+
+              <label style="border: 2px solid ${pSet.paperWidth === 80 ? 'var(--primary)' : 'var(--border-light)'}; border-radius: 8px; padding: 0.85rem; cursor: pointer; background: ${pSet.paperWidth === 80 ? 'rgba(99, 102, 241, 0.05)' : 'transparent'}; display: flex; flex-direction: column; gap: 0.35rem;">
+                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                  <input type="radio" name="paper_width_choice" value="80" ${pSet.paperWidth === 80 ? 'checked' : ''} onchange="window.setPrinterPaperWidth(80)">
+                  <strong style="font-size: 0.85rem;">Kertas 80 mm</strong>
+                </div>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">
+                  Printer Kasir Desktop Besar / Epson TM-T82 / Auto Cutter (Standar 48 karakter).
+                </span>
+              </label>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Karakter / Baris</label>
+                <input type="number" id="pset-char-per-line" class="form-control" style="font-size: 0.78rem;" value="${pSet.charPerLine || (pSet.paperWidth === 80 ? 48 : 32)}" min="24" max="64" onchange="window.updateLiveReceiptPreview()" oninput="window.updateLiveReceiptPreview()">
+                <span style="font-size: 0.65rem; color: var(--text-muted);">58mm: 30-32 | 80mm: 42-48</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Perataan Header</label>
+                <select id="pset-header-align" class="form-control" style="font-size: 0.78rem;" onchange="window.updateLiveReceiptPreview()">
+                  <option value="center" ${pSet.headerAlign === 'center' ? 'selected' : ''}>Rata Tengah (Center)</option>
+                  <option value="left" ${pSet.headerAlign === 'left' ? 'selected' : ''}>Rata Kiri (Left)</option>
+                </select>
+                <span style="font-size: 0.65rem; color: var(--text-muted);">Posisi nama & logo toko</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Ukuran Huruf Cetak</label>
+                <select id="pset-font-size" class="form-control" style="font-size: 0.78rem;" onchange="window.updateLiveReceiptPreview()">
+                  <option value="compact" ${pSet.fontSize === 'compact' ? 'selected' : ''}>Ringkas (8.5px)</option>
+                  <option value="normal" ${pSet.fontSize === 'normal' || !pSet.fontSize ? 'selected' : ''}>Standar (10px)</option>
+                  <option value="large" ${pSet.fontSize === 'large' ? 'selected' : ''}>Besar (11.5px)</option>
+                </select>
+                <span style="font-size: 0.65rem; color: var(--text-muted);">Untuk browser print dialog</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Perilaku Hardware Mesin Kasir -->
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-weight: 800; font-size: 0.95rem; color: var(--text-main); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span style="color: var(--primary);">${getIcon('package', 16)}</span>
+              <span>3. Perilaku Hardware Mesin Kasir</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Konfigurasi auto-cutter, kick cash drawer RJ11, dan jarak sobek kertas.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+              <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; padding: 0.5rem; background: var(--bg-main); border-radius: 6px; border: 1px solid var(--border-light);">
+                <input type="checkbox" id="pset-auto-cut" ${pSet.autoCut ? 'checked' : ''} style="margin-top: 3px;" onchange="window.updateLiveReceiptPreview()">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.82rem; color: var(--text-main);">Potong Kertas Otomatis (Auto-Cutter Blade)</div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">
+                    Aktifkan untuk printer 80mm dengan pisau potong. Matikan pada printer 58mm manual sobek agar tidak mencetak karakter error.
+                  </div>
+                </div>
+              </label>
+
+              <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; padding: 0.5rem; background: var(--bg-main); border-radius: 6px; border: 1px solid var(--border-light);">
+                <input type="checkbox" id="pset-open-drawer" ${pSet.openCashDrawer ? 'checked' : ''} style="margin-top: 3px;" onchange="window.updateLiveReceiptPreview()">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.82rem; color: var(--text-main);">Buka Laci Kasir Otomatis (Cash Drawer Kick RJ11)</div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">
+                    Kirim sinyal pulse RJ11 untuk menendang laci uang terbuka secara otomatis saat struk dicetak.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Spasi Akhir Kertas (Feed Lines)</label>
+                <select id="pset-feed-lines" class="form-control" style="font-size: 0.78rem;" onchange="window.updateLiveReceiptPreview()">
+                  <option value="2" ${pSet.feedLines == 2 ? 'selected' : ''}>2 Baris Kosong</option>
+                  <option value="3" ${pSet.feedLines == 3 ? 'selected' : ''}>3 Baris Kosong</option>
+                  <option value="4" ${pSet.feedLines == 4 || !pSet.feedLines ? 'selected' : ''}>4 Baris Kosong (Standar)</option>
+                  <option value="5" ${pSet.feedLines == 5 ? 'selected' : ''}>5 Baris Kosong</option>
+                  <option value="6" ${pSet.feedLines == 6 ? 'selected' : ''}>6 Baris Kosong (Sobek Nyaman)</option>
+                </select>
+                <span style="font-size: 0.65rem; color: var(--text-muted);">Mencegah teks struk terpotong saat disobek</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Jumlah Salinan Struk</label>
+                <select id="pset-print-copy" class="form-control" style="font-size: 0.78rem;" onchange="window.updateLiveReceiptPreview()">
+                  <option value="1" ${pSet.printCopy == 1 || !pSet.printCopy ? 'selected' : ''}>1 Struk (Standar Pembeli)</option>
+                  <option value="2" ${pSet.printCopy == 2 ? 'selected' : ''}>2 Struk (Kasir + Pembeli / Dapur)</option>
+                </select>
+                <span style="font-size: 0.65rem; color: var(--text-muted);">Cetak rangkap struk otomatis</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Branding Toko & Teks Struk -->
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-weight: 800; font-size: 0.95rem; color: var(--text-main); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span style="color: var(--primary);">${getIcon('tag', 16)}</span>
+              <span>4. Kustomisasi Branding & Teks Struk</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Sesuaikan identitas toko dan baris informasi yang tampil di lembar struk.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Nama Toko / Header Struk</label>
+                <input type="text" id="pset-store-name" class="form-control" style="font-size: 0.78rem;" value="${pSet.storeName || 'POSHERE STORE'}" placeholder="Contoh: KEDAI KOPI NIKMAT" oninput="window.updateLiveReceiptPreview()">
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.74rem;">Nomor Telepon Toko</label>
+                <input type="text" id="pset-store-phone" class="form-control" style="font-size: 0.78rem;" value="${pSet.storePhone || ''}" placeholder="Contoh: 0812-3456-7890" oninput="window.updateLiveReceiptPreview()">
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label class="form-label" style="font-size: 0.74rem;">Alamat / Subheader Toko</label>
+              <input type="text" id="pset-store-address" class="form-control" style="font-size: 0.78rem;" value="${pSet.storeAddress || 'Smart Point of Sale & Retail System'}" placeholder="Alamat lengkap cabang atau outlet" oninput="window.updateLiveReceiptPreview()">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label class="form-label" style="font-size: 0.74rem;">Catatan Kaki (Footer Struk)</label>
+              <textarea id="pset-footer-text" class="form-control" rows="2" style="font-size: 0.78rem;" placeholder="Pesan terima kasih atau syarat pengembalian" oninput="window.updateLiveReceiptPreview()">${pSet.receiptFooter || 'Terima Kasih Atas Kunjungan Anda!\nBarang yang sudah dibeli tidak dapat ditukar'}</textarea>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-light);">
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; cursor: pointer;">
+                <input type="checkbox" id="pset-show-cashier" ${pSet.showCashier ? 'checked' : ''} onchange="window.updateLiveReceiptPreview()">
+                <span>Nama Kasir</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; cursor: pointer;">
+                <input type="checkbox" id="pset-show-table" ${pSet.showTable ? 'checked' : ''} onchange="window.updateLiveReceiptPreview()">
+                <span>Nomor Meja / Ref</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; cursor: pointer;">
+                <input type="checkbox" id="pset-show-customer" ${pSet.showCustomer ? 'checked' : ''} onchange="window.updateLiveReceiptPreview()">
+                <span>Nama Pelanggan</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; cursor: pointer;">
+                <input type="checkbox" id="pset-show-tax" ${pSet.showTax ? 'checked' : ''} onchange="window.updateLiveReceiptPreview()">
+                <span>Pajak (PB1)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; cursor: pointer;">
+                <input type="checkbox" id="pset-show-discount" ${pSet.showDiscount ? 'checked' : ''} onchange="window.updateLiveReceiptPreview()">
+                <span>Diskon</span>
+              </label>
+            </div>
+          </div>
+        </form>
+
+        <!-- Right Column: Live Interactive Receipt Preview -->
+        <div style="display: flex; flex-direction: column; gap: 1rem; position: sticky; top: 1rem;">
+          <div class="card" style="padding: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+              <div>
+                <h3 style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin: 0;">Pratinjau Struk (Live Preview)</h3>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">Visualisasi fisik kertas thermal kasir</span>
+              </div>
+              <span id="preview-width-badge" class="role-badge badge-kasir" style="font-size: 0.7rem; padding: 2px 7px;">
+                ${pSet.paperWidth || 58}mm (${pSet.charPerLine || (pSet.paperWidth === 80 ? 48 : 32)} char)
+              </span>
+            </div>
+
+            <!-- Paper Preview Mount -->
+            <div class="receipt-preview-wrap">
+              <div id="receipt-live-preview-box" class="receipt-preview-paper paper-${pSet.paperWidth || 58}mm font-${pSet.fontSize || 'normal'}">
+                ${renderReceiptPreviewHtml(pSet)}
+              </div>
+            </div>
+
+            <!-- Action Buttons for Testing Hardware -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+              <button type="button" class="btn btn-success btn-icon-text" onclick="window.testPrintThermal()" style="font-weight: 700; justify-content: center;">
+                ${getIcon('printer', 15)} <span>Tes Cetak Struk Uji Coba</span>
+              </button>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.kickCashDrawer()" style="font-size: 0.76rem; justify-content: center;">
+                  ${getIcon('package', 14)} <span>Tes Buka Laci</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-icon-text" onclick="window.resetPrinterSettings()" style="font-size: 0.76rem; justify-content: center; color: #ef4444;">
+                  <span>Reset Default</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  `;
+}
+
+// Render HTML konten struk untuk Live Preview
+function renderReceiptPreviewHtml(pSet) {
+  const storeName = pSet.storeName || 'POSHERE STORE';
+  const storeAddress = pSet.storeAddress || 'Smart Point of Sale & Retail';
+  const storePhone = pSet.storePhone ? `<div>Telp: ${pSet.storePhone}</div>` : '';
+  const alignStyle = pSet.headerAlign === 'left' ? 'text-align: left;' : 'text-align: center;';
+  const footerLines = (pSet.receiptFooter || 'Terima Kasih Atas Kunjungan Anda!\nBarang yang sudah dibeli tidak dapat ditukar').replace(/\n/g, '<br/>');
+
+  return `
+    <div style="${alignStyle} margin-bottom: 0.5rem; border-bottom: 1px dashed #94a3b8; padding-bottom: 0.4rem;">
+      <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a;">${storeName}</div>
+      <div style="font-size: 0.7rem; color: #475569;">${storeAddress}</div>
+      ${storePhone}
+      <div style="font-size: 0.68rem; color: #64748b; margin-top: 0.2rem;">INV-20261026-001</div>
+      <div style="font-size: 0.68rem; color: #64748b;">${new Date().toLocaleString('id-ID')}</div>
+    </div>
+
+    <div style="font-size: 0.72rem; margin-bottom: 0.4rem; display: flex; flex-direction: column; gap: 0.1rem;">
+      ${pSet.showCashier !== false ? `<div style="display:flex; justify-content:space-between;"><span>Kasir:</span> <strong>Kasir Utama</strong></div>` : ''}
+      ${pSet.showTable !== false ? `<div style="display:flex; justify-content:space-between;"><span>Meja / Ref:</span> <strong>Meja 05</strong></div>` : ''}
+      ${pSet.showCustomer !== false ? `<div style="display:flex; justify-content:space-between;"><span>Pelanggan:</span> <strong>Budi Santoso</strong></div>` : ''}
+    </div>
+
+    <div style="border-top: 1px dashed #94a3b8; border-bottom: 1px dashed #94a3b8; padding: 0.4rem 0; margin-bottom: 0.4rem;">
+      <div style="margin-bottom: 0.3rem;">
+        <div style="font-weight: 700; color: #0f172a;">Kopi Susu Gula Aren</div>
+        <div style="display: flex; justify-content: space-between; color: #475569; font-size: 0.7rem;">
+          <span>2 x Rp 18.000</span>
+          <span style="font-weight: 600;">Rp 36.000</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-weight: 700; color: #0f172a;">Roti Bakar Coklat Keju</div>
+        <div style="display: flex; justify-content: space-between; color: #475569; font-size: 0.7rem;">
+          <span>1 x Rp 22.000</span>
+          <span style="font-weight: 600;">Rp 22.000</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.72rem;">
+      <div style="display: flex; justify-content: space-between;">
+        <span>Subtotal:</span>
+        <span>Rp 58.000</span>
+      </div>
+      ${pSet.showTax !== false ? `
+        <div style="display: flex; justify-content: space-between; color: #64748b;">
+          <span>Pajak (PB1):</span>
+          <span>Rp 5.800</span>
+        </div>
+      ` : ''}
+      ${pSet.showDiscount !== false ? `
+        <div style="display: flex; justify-content: space-between; color: #ef4444;">
+          <span>Diskon Promo:</span>
+          <span>-Rp 5.000</span>
+        </div>
+      ` : ''}
+      <div style="display: flex; justify-content: space-between; font-weight: 800; font-size: 0.88rem; border-top: 1px solid #cbd5e1; padding-top: 0.25rem; margin-top: 0.15rem; color: #0f172a;">
+        <span>TOTAL:</span>
+        <span>Rp 58.800</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; color: #475569;">
+        <span>Bayar (QRIS):</span>
+        <span>Rp 58.800</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; color: #475569;">
+        <span>Kembalian:</span>
+        <span>Rp 0</span>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 0.75rem; padding-top: 0.4rem; border-top: 1px dashed #94a3b8; font-size: 0.68rem; color: #64748b; line-height: 1.35;">
+      ${footerLines}
     </div>
   `;
 }
@@ -2201,33 +2523,60 @@ function renderModal() {
 
   if (type === 'receipt') {
     const trx = data;
+    const pSet = printerService.settings || {};
+    const paperWidth = pSet.paperWidth || 58;
+    const fontClass = pSet.fontSize === 'compact' ? 'font-compact' : (pSet.fontSize === 'large' ? 'font-large' : 'font-normal');
+    const alignStyle = pSet.headerAlign === 'left' ? 'text-align: left;' : 'text-align: center;';
+    const storeName = pSet.storeName || 'POShere Store';
+    const storeAddress = pSet.storeAddress || 'Smart Point of Sale & Retail';
+    const storePhone = pSet.storePhone ? `<div style="font-size: 0.72rem; color: #64748b;">Telp: ${pSet.storePhone}</div>` : '';
+    const footerLines = (pSet.receiptFooter || 'Terima Kasih Atas Kunjungan Anda!\nStruk Resmi Transaksi POShere').replace(/\n/g, '<br/>');
+
     return `
       <div class="modal-overlay">
-        <div class="modal-content" style="max-width: 380px;">
+        <div class="modal-content" style="max-width: ${paperWidth === 80 ? '420px' : '360px'};">
           <div class="modal-header">
-            <h3 style="font-size: 0.95rem; font-weight: 700;">Struk Transaksi</h3>
-            <button class="modal-close-btn" onclick="window.closeModal()">${getIcon('close', 16)}</button>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <h3 style="font-size: 0.95rem; font-weight: 700;">Struk Transaksi</h3>
+              <span class="role-badge badge-kasir" style="font-size: 0.65rem; padding: 2px 6px;">${paperWidth}mm</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <div style="display: inline-flex; background: var(--bg-main); border-radius: 6px; padding: 2px; border: 1px solid var(--border-light);">
+                <button type="button" class="btn ${paperWidth === 58 ? 'btn-primary' : 'btn-secondary'}" style="padding: 2px 7px; font-size: 0.68rem; border-radius: 4px;" onclick="window.quickSwitchReceiptWidth(58)">58mm</button>
+                <button type="button" class="btn ${paperWidth === 80 ? 'btn-primary' : 'btn-secondary'}" style="padding: 2px 7px; font-size: 0.68rem; border-radius: 4px;" onclick="window.quickSwitchReceiptWidth(80)">80mm</button>
+              </div>
+              <button class="modal-close-btn" onclick="window.closeModal()">${getIcon('close', 16)}</button>
+            </div>
           </div>
-          <div class="modal-body" id="receipt-printable">
-            <div style="text-align: center; margin-bottom: 1rem; border-bottom: 1px dashed #cbd5e1; padding-bottom: 0.75rem;">
-              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--primary-focus);">POShere Store</h2>
-              <div style="font-size: 0.75rem; color: #64748b;">Smart Point of Sale & Retail</div>
-              <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 0.25rem;">${trx.invoice_number}</div>
-              <div style="font-size: 0.7rem; color: #94a3b8;">${new Date(trx.created_at).toLocaleString('id-ID')}</div>
+          <div class="modal-body paper-${paperWidth}mm ${fontClass}" id="receipt-printable">
+            <div style="${alignStyle} margin-bottom: 0.75rem; border-bottom: 1px dashed #cbd5e1; padding-bottom: 0.5rem;">
+              <h2 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem;">${storeName}</h2>
+              <div style="font-size: 0.75rem; color: #475569;">${storeAddress}</div>
+              ${storePhone}
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">${trx.invoice_number}</div>
+              <div style="font-size: 0.7rem; color: #64748b;">${new Date(trx.created_at).toLocaleString('id-ID')}</div>
             </div>
 
-            <div style="font-size: 0.75rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
-              <span>Kasir: <strong>${trx.cashier_name}</strong></span>
-              <span>Meja / Ref: <strong>${trx.table_number || '-'}</strong></span>
+            <div style="font-size: 0.75rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.15rem;">
+              ${pSet.showCashier ? `<div style="display: flex; justify-content: space-between;"><span>Kasir:</span> <strong>${trx.cashier_name || 'Kasir'}</strong></div>` : ''}
+              ${pSet.showTable && trx.table_number ? `<div style="display: flex; justify-content: space-between;"><span>Meja / Ref:</span> <strong>${trx.table_number}</strong></div>` : ''}
+              ${pSet.showCustomer && (trx.customer_name || trx.customer) ? `<div style="display: flex; justify-content: space-between;"><span>Pelanggan:</span> <strong>${trx.customer_name || trx.customer}</strong></div>` : ''}
             </div>
 
             <div style="border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; padding: 0.5rem 0; margin-bottom: 0.5rem;">
-              ${(trx.items || []).map(it => `
-                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.25rem;">
-                  <span>${it.name} x${it.quantity || it.qty || 1}</span>
-                  <span>${formatRupiah(it.subtotal)}</span>
-                </div>
-              `).join('')}
+              ${(trx.items || []).map(it => {
+                const qty = it.quantity || it.qty || 1;
+                const price = it.price || (it.subtotal / qty);
+                return `
+                  <div style="margin-bottom: 0.35rem; font-size: 0.78rem;">
+                    <div style="font-weight: 600; color: #0f172a;">${it.name}</div>
+                    <div style="display: flex; justify-content: space-between; color: #475569; font-size: 0.74rem;">
+                      <span>${qty} x ${formatRupiah(price)}</span>
+                      <span style="font-weight: 600; color: #0f172a;">${formatRupiah(it.subtotal)}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem;">
@@ -2235,32 +2584,46 @@ function renderModal() {
                 <span>Subtotal:</span>
                 <span>${formatRupiah(trx.subtotal)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; font-weight: 800; font-size: 0.95rem; border-top: 1px solid #e2e8f0; padding-top: 0.25rem;">
+              ${pSet.showTax && trx.tax ? `
+                <div style="display: flex; justify-content: space-between; color: #64748b;">
+                  <span>Pajak (PB1):</span>
+                  <span>${formatRupiah(trx.tax)}</span>
+                </div>
+              ` : ''}
+              ${pSet.showDiscount && trx.discount ? `
+                <div style="display: flex; justify-content: space-between; color: #ef4444;">
+                  <span>Diskon:</span>
+                  <span>-${formatRupiah(trx.discount)}</span>
+                </div>
+              ` : ''}
+              <div style="display: flex; justify-content: space-between; font-weight: 800; font-size: 0.95rem; border-top: 1px solid #cbd5e1; padding-top: 0.35rem; margin-top: 0.15rem;">
                 <span>Total:</span>
-                <span style="color: var(--primary-focus);">${formatRupiah(trx.grand_total)}</span>
+                <span style="color: #0f172a;">${formatRupiah(trx.grand_total)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #64748b;">
-                <span>Bayar (${trx.payment_method_name}):</span>
-                <span>${formatRupiah(trx.paid_amount)}</span>
+              <div style="display: flex; justify-content: space-between; color: #475569;">
+                <span>Bayar (${trx.payment_method_name || 'Cash'}):</span>
+                <span>${formatRupiah(trx.paid_amount || trx.grand_total)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #64748b;">
+              <div style="display: flex; justify-content: space-between; color: #475569;">
                 <span>Kembalian:</span>
-                <span>${formatRupiah(trx.change_amount)}</span>
+                <span>${formatRupiah(trx.change_amount || 0)}</span>
               </div>
             </div>
 
-            <div style="text-align: center; margin-top: 1.25rem; font-size: 0.72rem; color: #94a3b8;">
-              Terima Kasih Atas Kunjungan Anda!<br/>
-              Struk Resmi Transaksi POShere
+            <div style="text-align: center; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1; font-size: 0.72rem; color: #64748b; line-height: 1.4;">
+              ${footerLines}
             </div>
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer" style="flex-wrap: wrap; gap: 0.4rem;">
             <button class="btn btn-secondary" onclick="window.closeModal()">Tutup</button>
-            <button class="btn btn-secondary btn-icon-text" onclick="window.print()">
+            <button class="btn btn-secondary btn-icon-text" onclick="window.kickCashDrawer()" title="Buka Laci Uang RJ11">
+              ${getIcon('package', 14)} <span>Buka Laci</span>
+            </button>
+            <button class="btn btn-secondary btn-icon-text" onclick="window.print()" title="Cetak ke Printer Driver Windows / OS">
               ${getIcon('file-text', 14)} <span>Print Dialog</span>
             </button>
-            <button class="btn btn-primary btn-icon-text" onclick="window.printToThermalPrinter()">
-              ${getIcon('printer', 14)} <span>Cetak ke Thermal Printer</span>
+            <button class="btn btn-primary btn-icon-text" onclick="window.printToThermalPrinter()" style="font-weight: 700;">
+              ${getIcon('printer', 14)} <span>Cetak ke Thermal (${paperWidth}mm)</span>
             </button>
           </div>
         </div>
@@ -4191,10 +4554,116 @@ window.saveRolePermissions = async function() {
   }
 };
 
-// Thermal Printer Window Actions
-window.setPrinterWidth = function(width) {
+// Thermal Printer & Hardware Kasir Window Actions
+window.setPrinterPaperWidth = function(width) {
   printerService.paperWidth = Number(width);
+  const charInput = document.getElementById('pset-char-per-line');
+  if (charInput) {
+    charInput.value = printerService.settings.charPerLine;
+  }
+  const autoCutCheck = document.getElementById('pset-auto-cut');
+  if (autoCutCheck) {
+    autoCutCheck.checked = printerService.settings.autoCut;
+  }
+  window.updateLiveReceiptPreview();
+  renderApp();
   showToast(`Lebar kertas diset ke ${width}mm`, 'info');
+};
+
+window.quickSwitchReceiptWidth = function(width) {
+  printerService.paperWidth = Number(width);
+  // Re-render modal to reflect change immediately
+  if (state.modalState && state.modalState.isOpen && state.modalState.type === 'receipt') {
+    renderApp();
+  }
+};
+
+window.setPrinterWidth = function(width) {
+  window.setPrinterPaperWidth(width);
+};
+
+// Update Live Receipt Preview & Auto-Sync
+window.updateLiveReceiptPreview = function() {
+  const charInput = document.getElementById('pset-char-per-line');
+  const alignSelect = document.getElementById('pset-header-align');
+  const fontSelect = document.getElementById('pset-font-size');
+  const storeInput = document.getElementById('pset-store-name');
+  const addressInput = document.getElementById('pset-store-address');
+  const phoneInput = document.getElementById('pset-store-phone');
+  const footerInput = document.getElementById('pset-footer-text');
+  const baudSelect = document.getElementById('pset-baud-rate');
+  const connSelect = document.getElementById('pset-connection-type');
+  const autoCutCheck = document.getElementById('pset-auto-cut');
+  const drawerCheck = document.getElementById('pset-open-drawer');
+  const feedSelect = document.getElementById('pset-feed-lines');
+  const copySelect = document.getElementById('pset-print-copy');
+
+  const showCashierCheck = document.getElementById('pset-show-cashier');
+  const showTableCheck = document.getElementById('pset-show-table');
+  const showCustCheck = document.getElementById('pset-show-customer');
+  const showTaxCheck = document.getElementById('pset-show-tax');
+  const showDiscCheck = document.getElementById('pset-show-discount');
+
+  const newSettings = {
+    charPerLine: charInput ? Number(charInput.value) || 32 : printerService.settings.charPerLine,
+    headerAlign: alignSelect ? alignSelect.value : printerService.settings.headerAlign,
+    fontSize: fontSelect ? fontSelect.value : printerService.settings.fontSize,
+    storeName: storeInput ? storeInput.value : printerService.settings.storeName,
+    storeAddress: addressInput ? addressInput.value : printerService.settings.storeAddress,
+    storePhone: phoneInput ? phoneInput.value : printerService.settings.storePhone,
+    receiptFooter: footerInput ? footerInput.value : printerService.settings.receiptFooter,
+    baudRate: baudSelect ? Number(baudSelect.value) : printerService.settings.baudRate,
+    connectionType: connSelect ? connSelect.value : printerService.settings.connectionType,
+    autoCut: autoCutCheck ? autoCutCheck.checked : printerService.settings.autoCut,
+    openCashDrawer: drawerCheck ? drawerCheck.checked : printerService.settings.openCashDrawer,
+    feedLines: feedSelect ? Number(feedSelect.value) : printerService.settings.feedLines,
+    printCopy: copySelect ? Number(copySelect.value) : printerService.settings.printCopy,
+    showCashier: showCashierCheck ? showCashierCheck.checked : printerService.settings.showCashier,
+    showTable: showTableCheck ? showTableCheck.checked : printerService.settings.showTable,
+    showCustomer: showCustCheck ? showCustCheck.checked : printerService.settings.showCustomer,
+    showTax: showTaxCheck ? showTaxCheck.checked : printerService.settings.showTax,
+    showDiscount: showDiscCheck ? showDiscCheck.checked : printerService.settings.showDiscount
+  };
+
+  printerService.saveSettings(newSettings);
+
+  const previewBox = document.getElementById('receipt-live-preview-box');
+  if (previewBox) {
+    previewBox.className = `receipt-preview-paper paper-${printerService.paperWidth}mm font-${printerService.settings.fontSize}`;
+    previewBox.innerHTML = renderReceiptPreviewHtml(printerService.settings);
+  }
+
+  const badge = document.getElementById('preview-width-badge');
+  if (badge) {
+    badge.innerText = `${printerService.paperWidth}mm (${printerService.settings.charPerLine} char)`;
+  }
+};
+
+window.savePrinterSettingsForm = function(event) {
+  if (event) event.preventDefault();
+  window.updateLiveReceiptPreview();
+  showToast('Pengaturan printer berhasil disimpan & disinkronkan!', 'success');
+};
+
+window.resetPrinterSettings = async function() {
+  const confirmed = await showConfirmDialog({
+    title: 'Reset Pengaturan Printer',
+    message: 'Apakah Anda yakin ingin mengembalikan semua konfigurasi printer ke pengaturan bawaan pabrik?',
+    confirmText: 'Ya, Reset',
+    cancelText: 'Batal',
+    type: 'warning'
+  });
+  if (confirmed) {
+    printerService.resetSettings();
+    renderApp();
+    showToast('Pengaturan printer dikembalikan ke default.', 'info');
+  }
+};
+
+window.disconnectPrinter = function() {
+  printerService.disconnect();
+  renderApp();
+  showToast('Koneksi printer fisik telah diputus.', 'info');
 };
 
 window.connectBluetoothPrinter = async function() {
@@ -4207,17 +4676,20 @@ window.connectBluetoothPrinter = async function() {
     });
     renderApp();
   } catch (err) {
-    await showAlertDialog({
-      title: 'Gagal Konek Bluetooth',
-      message: err.message,
-      type: 'danger'
-    });
+    if (err.name !== 'NotFoundError') {
+      await showAlertDialog({
+        title: 'Gagal Konek Bluetooth',
+        message: err.message || 'Gagal menyambungkan perangkat Bluetooth',
+        type: 'danger'
+      });
+    }
   }
 };
 
 window.connectUsbPrinter = async function() {
   try {
-    const res = await printerService.connectUsbSerial();
+    const baudRate = document.getElementById('pset-baud-rate')?.value || printerService.settings.baudRate || 9600;
+    const res = await printerService.connectUsbSerial(baudRate);
     await showAlertDialog({
       title: 'Printer USB Terhubung',
       message: `Berhasil terhubung dengan printer USB Serial: ${res.name}`,
@@ -4225,33 +4697,54 @@ window.connectUsbPrinter = async function() {
     });
     renderApp();
   } catch (err) {
+    if (err.name !== 'NotFoundError') {
+      await showAlertDialog({
+        title: 'Gagal Konek USB Serial',
+        message: err.message || 'Gagal menyambungkan perangkat USB',
+        type: 'danger'
+      });
+    }
+  }
+};
+
+window.kickCashDrawer = async function() {
+  try {
+    await printerService.kickCashDrawer();
+    showToast('Sinyal buka laci kasir (RJ11) berhasil dikirim!', 'success');
+  } catch (err) {
     await showAlertDialog({
-      title: 'Gagal Konek USB Serial',
-      message: err.message,
-      type: 'danger'
+      title: 'Gagal Buka Laci Kasir',
+      message: err.message + '\n\nPastikan printer kasir terhubung via Bluetooth/USB dan kabel laci kasir (RJ11) dicolok ke port printer.',
+      type: 'warning'
     });
   }
 };
 
 window.testPrintThermal = async function() {
+  const pSet = printerService.settings || {};
   const dummyTrx = {
-    invoice_number: 'TEST-PRINTER-001',
+    invoice_number: 'TEST-' + Math.floor(1000 + Math.random() * 9000),
     created_at: new Date().toISOString(),
-    cashier_name: state.currentUser.name,
-    table_number: 'Tes Cetak',
+    cashier_name: state.currentUser?.name || 'Kasir Uji Coba',
+    table_number: 'Meja 01',
+    customer_name: 'Pelanggan Uji Coba',
     payment_method_name: 'TEST PRINT',
     items: [
-      { name: 'Kopi Susu Uji Coba', quantity: 1, price: 18000, subtotal: 18000 }
+      { name: 'Kopi Susu Uji Coba', quantity: 2, price: 18000, subtotal: 36000 },
+      { name: 'Roti Bakar Uji Coba', quantity: 1, price: 20000, subtotal: 20000 }
     ],
-    subtotal: 18000,
-    grand_total: 18000,
-    paid_amount: 20000,
-    change_amount: 2000
+    subtotal: 56000,
+    tax: pSet.showTax ? 5600 : 0,
+    discount: pSet.showDiscount ? 5000 : 0,
+    grand_total: 56000 + (pSet.showTax ? 5600 : 0) - (pSet.showDiscount ? 5000 : 0),
+    paid_amount: 60000,
+    change_amount: 60000 - (56000 + (pSet.showTax ? 5600 : 0) - (pSet.showDiscount ? 5000 : 0))
   };
+
   try {
     const result = await printerService.printReceipt(dummyTrx);
     if (result.method !== 'browser_dialog') {
-      showToast(`Struk berhasil dikirim ke Thermal Printer (${result.method})!`, 'success');
+      showToast(`Struk uji coba berhasil dikirim ke printer (${result.method})!`, 'success');
     }
   } catch (err) {
     await showAlertDialog({
@@ -4272,12 +4765,16 @@ window.printToThermalPrinter = async function() {
     }
   } catch (err) {
     await showAlertDialog({
-      title: 'Thermal Printer Tidak Terjangkau',
-      message: 'Gagal cetak ke thermal printer: ' + err.message + '\n\nSistem akan mengalihkan ke printer browser standar.',
+      title: 'Thermal Printer Fisik Belum Terhubung',
+      message: 'Gagal cetak direct: ' + err.message + '\n\nSistem akan mengalihkan cetakan ke dialog cetak browser (OS / PDF).',
       type: 'warning'
     });
     window.print();
   }
+};
+
+window.onPrinterStateChange = function() {
+  renderApp();
 };
 
 // Master Cash Register Window Actions
